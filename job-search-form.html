@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Search Preferences</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f3f4f6;
+    margin: 0;
+    padding: 40px 20px;
+    display: flex;
+    justify-content: center;
+  }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 32px;
+    max-width: 460px;
+    width: 100%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  h1 {
+    font-size: 22px;
+    margin: 0 0 6px;
+    text-align: center;
+  }
+  p.subtitle {
+    text-align: center;
+    color: #6b7280;
+    font-size: 14px;
+    margin: 0 0 28px;
+  }
+  label {
+    display: block;
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 6px;
+    margin-top: 18px;
+  }
+  select, input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 15px;
+    background: #fff;
+  }
+  select:disabled {
+    background: #f3f4f6;
+    color: #9ca3af;
+  }
+  button {
+    width: 100%;
+    margin-top: 28px;
+    padding: 13px;
+    background: #f97316;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { background: #ea580c; }
+  button:disabled { background: #d1d5db; cursor: not-allowed; }
+  .status {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 14px;
+  }
+  .status.success { color: #16a34a; }
+  .status.error { color: #dc2626; }
+  small.hint {
+    display: block;
+    color: #9ca3af;
+    margin-top: 4px;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>Job Search Preferences</h1>
+  <p class="subtitle">Tell us what you're looking for and we'll email you matching remote jobs.</p>
+
+  <form id="jobForm">
+    <label for="industry">Industry</label>
+    <select id="industry" required>
+      <option value="">Select an industry...</option>
+      <option value="IT/Tech">IT / Tech</option>
+      <option value="Finance">Finance</option>
+      <option value="Marketing">Marketing</option>
+      <option value="Design">Design</option>
+      <option value="Data & Analytics">Data & Analytics</option>
+      <option value="Other">Other</option>
+    </select>
+
+    <label for="roleType">Role Type</label>
+    <select id="roleType" required disabled>
+      <option value="">Select an industry first...</option>
+    </select>
+
+    <label for="skills">Key Skills</label>
+    <input type="text" id="skills" placeholder="e.g. python, sql, automation, api" required>
+    <small class="hint">Comma-separated. These are matched against live job postings.</small>
+
+    <label for="email">Email</label>
+    <input type="email" id="email" placeholder="you@example.com" required>
+
+    <button type="submit" id="submitBtn">Find My Matches</button>
+  </form>
+
+  <div id="status" class="status"></div>
+</div>
+
+<script>
+  // ===== ROLE TYPE OPTIONS PER INDUSTRY =====
+  const roleOptions = {
+    "IT/Tech": ["Backend", "Frontend", "Full-stack", "DevOps", "QA", "Mobile Development", "Cloud/Infrastructure"],
+    "Finance": ["Financial Analyst", "Accountant", "Investment Analyst", "Risk & Compliance", "FP&A", "Auditor"],
+    "Marketing": ["Digital Marketing", "Content Marketing", "SEO/SEM", "Social Media", "Growth Marketing", "Marketing Analyst"],
+    "Design": ["UI/UX Designer", "Product Designer", "Graphic Designer", "Motion Designer", "Design Systems"],
+    "Data & Analytics": ["Data Analyst", "Data Engineer", "Data Scientist", "BI Analyst", "Business Analyst", "Analytics Automation"],
+    "Other": ["Operations", "Customer Support", "HR/People", "Sales", "Project Management", "General"]
+  };
+
+  const industrySelect = document.getElementById('industry');
+  const roleSelect = document.getElementById('roleType');
+
+  industrySelect.addEventListener('change', () => {
+    const industry = industrySelect.value;
+    roleSelect.innerHTML = '';
+
+    if (!industry) {
+      roleSelect.disabled = true;
+      roleSelect.innerHTML = '<option value="">Select an industry first...</option>';
+      return;
+    }
+
+    roleSelect.disabled = false;
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select a role...';
+    roleSelect.appendChild(placeholder);
+
+    roleOptions[industry].forEach(role => {
+      const opt = document.createElement('option');
+      opt.value = role;
+      opt.textContent = role;
+      roleSelect.appendChild(opt);
+    });
+  });
+
+  // ===== SUBMIT TO N8N WEBHOOK =====
+  const WEBHOOK_URL = "https://rubendsouza.app.n8n.cloud/webhook/2a3eb17c-63d9-426c-b489-7536e454220a";
+
+  const form = document.getElementById('jobForm');
+  const statusDiv = document.getElementById('status');
+  const submitBtn = document.getElementById('submitBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const payload = {
+      industry: industrySelect.value,
+      roleType: roleSelect.value,
+      skills: document.getElementById('skills').value,
+      email: document.getElementById('email').value
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+    statusDiv.textContent = '';
+    statusDiv.className = 'status';
+
+    try {
+      const response = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        statusDiv.textContent = "Got it! Check your inbox for matching jobs shortly.";
+        statusDiv.className = 'status success';
+        form.reset();
+        roleSelect.disabled = true;
+        roleSelect.innerHTML = '<option value="">Select an industry first...</option>';
+      } else {
+        throw new Error('Request failed');
+      }
+    } catch (err) {
+      statusDiv.textContent = "Something went wrong. Please try again.";
+      statusDiv.className = 'status error';
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Find My Matches';
+    }
+  });
+</script>
+
+</body>
+</html>
