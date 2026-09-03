@@ -52,6 +52,9 @@
     background: #f3f4f6;
     color: #9ca3af;
   }
+  input[type="file"] {
+    padding: 8px 12px;
+  }
   button {
     width: 100%;
     margin-top: 28px;
@@ -82,7 +85,6 @@
 </style>
 </head>
 <body>
-
 <div class="card">
   <h1>Job Search Preferences</h1>
   <p class="subtitle">Tell us what you're looking for and we'll email you matching remote jobs.</p>
@@ -111,6 +113,10 @@
     <label for="email">Email</label>
     <input type="email" id="email" placeholder="you@example.com" required>
 
+    <label for="resume">Resume (optional)</label>
+    <input type="file" id="resume" accept="application/pdf">
+    <small class="hint">Optional. If you upload a PDF, we'll pull additional skills from it and combine them with what you typed above.</small>
+
     <button type="submit" id="submitBtn">Find My Matches</button>
   </form>
 
@@ -134,19 +140,16 @@
   industrySelect.addEventListener('change', () => {
     const industry = industrySelect.value;
     roleSelect.innerHTML = '';
-
     if (!industry) {
       roleSelect.disabled = true;
       roleSelect.innerHTML = '<option value="">Select an industry first...</option>';
       return;
     }
-
     roleSelect.disabled = false;
     const placeholder = document.createElement('option');
     placeholder.value = '';
     placeholder.textContent = 'Select a role...';
     roleSelect.appendChild(placeholder);
-
     roleOptions[industry].forEach(role => {
       const opt = document.createElement('option');
       opt.value = role;
@@ -155,22 +158,30 @@
     });
   });
 
-  // ===== SUBMIT TO N8N WEBHOOK =====
-  const WEBHOOK_URL = "https://rubendsouza.app.n8n.cloud/webhook/2a3eb17c-63d9-426c-b489-7536e454220a";
+  // ===== SUBMIT TO CLOUDFLARE WORKER =====
+  const WEBHOOK_URL = "https://job-radar-worker.jobradar-alerts-app.workers.dev";
 
   const form = document.getElementById('jobForm');
   const statusDiv = document.getElementById('status');
   const submitBtn = document.getElementById('submitBtn');
+  const resumeInput = document.getElementById('resume');
+
+  // Reads a File object and resolves to just the base64 payload (no data: prefix)
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result; // "data:application/pdf;base64,XXXX..."
+        const base64 = result.split(",")[1];
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error("Could not read the resume file."));
+      reader.readAsDataURL(file);
+    });
+  }
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-
-    const payload = {
-      industry: industrySelect.value,
-      roleType: roleSelect.value,
-      skills: document.getElementById('skills').value,
-      email: document.getElementById('email').value
-    };
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
@@ -178,6 +189,21 @@
     statusDiv.className = 'status';
 
     try {
+      const payload = {
+        industry: industrySelect.value,
+        roleType: roleSelect.value,
+        skills: document.getElementById('skills').value,
+        email: document.getElementById('email').value,
+        resumeFileName: null,
+        resumeBase64: null
+      };
+
+      const resumeFile = resumeInput.files[0];
+      if (resumeFile) {
+        payload.resumeFileName = resumeFile.name;
+        payload.resumeBase64 = await fileToBase64(resumeFile);
+      }
+
       const response = await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -202,6 +228,5 @@
     }
   });
 </script>
-
 </body>
 </html>
