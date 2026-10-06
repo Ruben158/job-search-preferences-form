@@ -180,6 +180,39 @@
     });
   }
 
+  // ===== AUTO-FILL SKILLS FROM RESUME =====
+  const skillsInput = document.getElementById('skills');
+  const resumeHint = resumeInput.nextElementSibling; // the <small class="hint"> right after the file input
+
+  resumeInput.addEventListener('change', async () => {
+    const file = resumeInput.files[0];
+    if (!file) return;
+
+    const originalHint = resumeHint.textContent;
+    resumeHint.textContent = "Reading your resume...";
+
+    try {
+      const base64 = await fileToBase64(file);
+      const response = await fetch(WEBHOOK_URL + "/extract-skills", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeBase64: base64 })
+      });
+
+      if (!response.ok) throw new Error('Extraction failed');
+
+      const data = await response.json();
+      if (data.skills && data.skills.length > 0) {
+        skillsInput.value = data.skills.join(', ');
+        resumeHint.textContent = "Skills filled in from your resume — feel free to edit them.";
+      } else {
+        resumeHint.textContent = "Couldn't find clear skills in that resume — type them in manually.";
+      }
+    } catch (err) {
+      resumeHint.textContent = "Couldn't read that resume automatically — type your skills in manually.";
+    }
+  });
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
