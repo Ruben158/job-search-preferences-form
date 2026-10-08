@@ -3,124 +3,223 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Job Search Preferences</title>
+<title>Job Radar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+  :root {
+    --ink: #12262b;
+    --ink-soft: #c9d8da;
+    --page: #eef1f3;
+    --surface: #ffffff;
+    --text: #172026;
+    --muted: #55616a;
+    --border: #cfd6db;
+    --accent: #0b6b5f;
+    --accent-dark: #08524a;
+    --error: #b42318;
+    --success: #0b6b3a;
+  }
+
   * { box-sizing: border-box; }
+
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #f3f4f6;
     margin: 0;
-    padding: 40px 20px;
+    min-height: 100vh;
     display: flex;
+    align-items: center;
     justify-content: center;
+    padding: 32px 16px;
+    color: var(--text);
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.5;
+    background-color: #0d2025;
+    background-image:
+      radial-gradient(ellipse 60% 50% at 50% 45%, rgba(24, 140, 124, 0.35), transparent 70%),
+      repeating-radial-gradient(circle at 50% 45%, transparent 0, transparent 71px, rgba(255, 255, 255, 0.07) 71px, rgba(255, 255, 255, 0.07) 72px),
+      linear-gradient(160deg, #12303a 0%, #0b1b20 100%);
+    background-attachment: fixed;
   }
-  .card {
-    background: #fff;
-    border-radius: 12px;
-    padding: 32px;
-    max-width: 460px;
+
+  .shell {
     width: 100%;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    max-width: 520px;
+    background: var(--surface);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), 0 24px 60px rgba(0, 0, 0, 0.35);
   }
-  h1 {
-    font-size: 22px;
-    margin: 0 0 6px;
-    text-align: center;
+
+  /* ---------- Form panel ---------- */
+  .form-panel { padding: 36px 32px; }
+
+  .form-panel h1 {
+    font-size: 24px;
+    font-weight: 600;
+    margin: 0 0 4px;
   }
-  p.subtitle {
-    text-align: center;
-    color: #6b7280;
+
+  .form-panel .sub {
+    margin: 0 0 24px;
+    color: var(--muted);
     font-size: 14px;
-    margin: 0 0 28px;
   }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0 16px;
+  }
+
+  @media (min-width: 560px) {
+    .row.two { grid-template-columns: 1fr 1fr; }
+  }
+
+  .field { margin-bottom: 18px; }
+
   label {
     display: block;
-    font-weight: 600;
     font-size: 14px;
+    font-weight: 500;
     margin-bottom: 6px;
-    margin-top: 18px;
   }
-  select, input {
+
+  .optional { color: var(--muted); font-weight: 400; }
+
+  select, input[type="text"], input[type="email"], input[type="file"] {
     width: 100%;
     padding: 10px 12px;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
+    font: inherit;
     font-size: 15px;
+    color: var(--text);
     background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
   }
-  select:disabled {
-    background: #f3f4f6;
-    color: #9ca3af;
-  }
-  input[type="file"] {
-    padding: 8px 12px;
-  }
-  button {
-    width: 100%;
-    margin-top: 28px;
-    padding: 13px;
-    background: #f97316;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 16px;
-    font-weight: 600;
+
+  select:disabled { background: #f3f5f6; color: #8a949b; }
+
+  input::placeholder { color: #8a949b; }
+
+  input[type="file"] { padding: 7px 8px; }
+
+  input[type="file"]::file-selector-button {
+    font: inherit;
+    font-size: 14px;
+    margin-right: 12px;
+    padding: 6px 12px;
+    color: var(--text);
+    background: #f3f5f6;
+    border: 1px solid var(--border);
+    border-radius: 4px;
     cursor: pointer;
   }
-  button:hover { background: #ea580c; }
-  button:disabled { background: #d1d5db; cursor: not-allowed; }
-  .status {
-    text-align: center;
-    margin-top: 16px;
-    font-size: 14px;
+
+  select:focus-visible, input:focus-visible, button:focus-visible, a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
-  .status.success { color: #16a34a; }
-  .status.error { color: #dc2626; }
-  small.hint {
+
+  .hint {
     display: block;
-    color: #9ca3af;
-    margin-top: 4px;
-    font-size: 12px;
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  button[type="submit"] {
+    width: 100%;
+    margin-top: 6px;
+    padding: 12px 16px;
+    font: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  button[type="submit"]:hover { background: var(--accent-dark); }
+  button[type="submit"]:disabled { background: #9db3b0; cursor: not-allowed; }
+
+  .status {
+    margin-top: 14px;
+    font-size: 14px;
+    min-height: 20px;
+  }
+  .status.success { color: var(--success); }
+  .status.error { color: var(--error); }
+
+  .footer-note {
+    margin: 24px 0 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .footer-note a { color: var(--accent); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
   }
 </style>
 </head>
 <body>
-<div class="card">
-  <h1>Job Search Preferences</h1>
-  <p class="subtitle">Tell us what you're looking for and we'll email you matching remote jobs.</p>
+<div class="shell">
 
-  <form id="jobForm">
-    <label for="industry">Industry</label>
-    <select id="industry" required>
-      <option value="">Select an industry...</option>
-      <option value="IT/Tech">IT / Tech</option>
-      <option value="Finance">Finance</option>
-      <option value="Marketing">Marketing</option>
-      <option value="Design">Design</option>
-      <option value="Data & Analytics">Data & Analytics</option>
-      <option value="Other">Other</option>
-    </select>
+  <section class="form-panel">
+    <h1>Job Radar</h1>
+    <p class="sub">Get matching remote jobs by email.</p>
 
-    <label for="roleType">Role Type</label>
-    <select id="roleType" required disabled>
-      <option value="">Select an industry first...</option>
-    </select>
+    <form id="jobForm">
+      <div class="row two">
+        <div class="field">
+          <label for="industry">Industry</label>
+          <select id="industry" required>
+            <option value="">Select an industry</option>
+            <option value="IT/Tech">IT / Tech</option>
+            <option value="Finance">Finance</option>
+            <option value="Marketing">Marketing</option>
+            <option value="Design">Design</option>
+            <option value="Data & Analytics">Data & Analytics</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="roleType">Role type</label>
+          <select id="roleType" required disabled>
+            <option value="">Select an industry first</option>
+          </select>
+        </div>
+      </div>
 
-    <label for="skills">Key Skills</label>
-    <input type="text" id="skills" placeholder="e.g. python, sql, automation, api" required>
-    <small class="hint">Comma-separated. These are matched against live job postings.</small>
+      <div class="field">
+        <label for="resume">Resume <span class="optional">(optional)</span></label>
+        <input type="file" id="resume" accept="application/pdf">
+        <span class="hint" id="resumeHint" aria-live="polite">Upload a PDF to fill in your skills.</span>
+      </div>
 
-    <label for="email">Email</label>
-    <input type="email" id="email" placeholder="you@example.com" required>
+      <div class="field">
+        <label for="skills">Key skills</label>
+        <input type="text" id="skills" placeholder="e.g. python, sql, power bi" required>
+        <span class="hint">Separate with commas.</span>
+      </div>
 
-    <label for="resume">Resume (optional)</label>
-    <input type="file" id="resume" accept="application/pdf">
-    <small class="hint">Optional. If you upload a PDF, we'll pull additional skills from it and combine them with what you typed above.</small>
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" placeholder="you@example.com" required>
+      </div>
 
-    <button type="submit" id="submitBtn">Find My Matches</button>
-  </form>
+      <button type="submit" id="submitBtn">Find my matches</button>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+    </form>
 
-  <div id="status" class="status"></div>
+    <p class="footer-note"><a href="privacy-policy.html">Privacy policy</a></p>
+  </section>
+
 </div>
 
 <script>
@@ -142,13 +241,13 @@
     roleSelect.innerHTML = '';
     if (!industry) {
       roleSelect.disabled = true;
-      roleSelect.innerHTML = '<option value="">Select an industry first...</option>';
+      roleSelect.innerHTML = '<option value="">Select an industry first</option>';
       return;
     }
     roleSelect.disabled = false;
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = 'Select a role...';
+    placeholder.textContent = 'Select a role';
     roleSelect.appendChild(placeholder);
     roleOptions[industry].forEach(role => {
       const opt = document.createElement('option');
@@ -160,6 +259,7 @@
 
   // ===== SUBMIT TO CLOUDFLARE WORKER =====
   const WEBHOOK_URL = "https://job-radar-worker.jobradar-alerts-app.workers.dev";
+  const DEFAULT_RESUME_HINT = "Upload a PDF to fill in your skills.";
 
   const form = document.getElementById('jobForm');
   const statusDiv = document.getElementById('status');
@@ -182,13 +282,15 @@
 
   // ===== AUTO-FILL SKILLS FROM RESUME =====
   const skillsInput = document.getElementById('skills');
-  const resumeHint = resumeInput.nextElementSibling; // the <small class="hint"> right after the file input
+  const resumeHint = document.getElementById('resumeHint');
 
   resumeInput.addEventListener('change', async () => {
     const file = resumeInput.files[0];
-    if (!file) return;
+    if (!file) {
+      resumeHint.textContent = DEFAULT_RESUME_HINT;
+      return;
+    }
 
-    const originalHint = resumeHint.textContent;
     resumeHint.textContent = "Reading your resume...";
 
     try {
@@ -204,12 +306,12 @@
       const data = await response.json();
       if (data.skills && data.skills.length > 0) {
         skillsInput.value = data.skills.join(', ');
-        resumeHint.textContent = "Skills filled in from your resume — feel free to edit them.";
+        resumeHint.textContent = "Skills filled in. You can edit them.";
       } else {
-        resumeHint.textContent = "Couldn't find clear skills in that resume — type them in manually.";
+        resumeHint.textContent = "No skills found. Please type them in.";
       }
     } catch (err) {
-      resumeHint.textContent = "Couldn't read that resume automatically — type your skills in manually.";
+      resumeHint.textContent = "Couldn't read that file. Please type your skills in.";
     }
   });
 
@@ -244,11 +346,12 @@
       });
 
       if (response.ok) {
-        statusDiv.textContent = "Got it! Check your inbox for matching jobs shortly.";
+        statusDiv.textContent = "Done. Check your inbox shortly.";
         statusDiv.className = 'status success';
         form.reset();
         roleSelect.disabled = true;
-        roleSelect.innerHTML = '<option value="">Select an industry first...</option>';
+        roleSelect.innerHTML = '<option value="">Select an industry first</option>';
+        resumeHint.textContent = DEFAULT_RESUME_HINT;
       } else {
         throw new Error('Request failed');
       }
@@ -257,7 +360,7 @@
       statusDiv.className = 'status error';
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Find My Matches';
+      submitBtn.textContent = 'Find my matches';
     }
   });
 </script>
