@@ -203,17 +203,18 @@
           <label for="industry">Industry</label>
           <select id="industry" required>
             <option value="">Select an industry</option>
-            <option value="Information Technology &amp; Software">Information Technology &amp; Software</option>
-            <option value="Banking, Financial Services &amp; Insurance (BFSI)">Banking, Financial Services &amp; Insurance (BFSI)</option>
+            <option value="IT &amp; Software">IT &amp; Software</option>
+            <option value="Data &amp; Analytics">Data &amp; Analytics</option>
+            <option value="Customer Service &amp; Support">Customer Service &amp; Support</option>
+            <option value="Administrative &amp; Data Entry">Administrative &amp; Data Entry</option>
+            <option value="Sales &amp; Marketing">Sales &amp; Marketing</option>
+            <option value="Finance, Banking &amp; Insurance">Finance, Banking &amp; Insurance</option>
+            <option value="HR, Operations &amp; Management">HR, Operations &amp; Management</option>
+            <option value="Engineering, Manufacturing &amp; Construction">Engineering, Manufacturing &amp; Construction</option>
+            <option value="Supply Chain &amp; Logistics">Supply Chain &amp; Logistics</option>
             <option value="Healthcare &amp; Life Sciences">Healthcare &amp; Life Sciences</option>
-            <option value="Manufacturing, Industrial &amp; Automotive">Manufacturing, Industrial &amp; Automotive</option>
-            <option value="Construction &amp; Real Estate">Construction &amp; Real Estate</option>
-            <option value="Supply Chain, Logistics &amp; Transportation">Supply Chain, Logistics &amp; Transportation</option>
-            <option value="Consumer Goods, Retail &amp; E-Commerce">Consumer Goods, Retail &amp; E-Commerce</option>
-            <option value="Professional, Legal &amp; Business Services">Professional, Legal &amp; Business Services</option>
-            <option value="Media, Entertainment &amp; Telecommunications">Media, Entertainment &amp; Telecommunications</option>
-            <option value="Hospitality, Food Service &amp; Tourism">Hospitality, Food Service &amp; Tourism</option>
-            <option value="Education &amp; Non-Profit">Education &amp; Non-Profit</option>
+            <option value="Retail, Hospitality &amp; Travel">Retail, Hospitality &amp; Travel</option>
+            <option value="Education, Media &amp; Legal">Education, Media &amp; Legal</option>
           </select>
         </div>
         <div class="field">
@@ -287,127 +288,116 @@
 <script>
   // ===== ROLE TYPE OPTIONS PER INDUSTRY =====
   const roleOptions = {
-    "Information Technology & Software": [
+    "IT & Software": [
         "Full-Stack Developer",
         "Frontend Developer",
         "Backend Developer",
         "Mobile App Developer",
         "DevOps Engineer",
-        "Site Reliability Engineer (SRE)",
-        "Cloud Solutions Architect",
+        "QA Engineer",
+        "Cybersecurity Analyst",
+        "UI/UX Designer",
+        "Product Manager"
+    ],
+    "Data & Analytics": [
+        "Data Analyst",
+        "Junior Data Analyst",
+        "Business Analyst",
+        "Business Intelligence Analyst",
         "Data Engineer",
         "Data Scientist",
-        "Machine Learning Engineer",
-        "Cybersecurity Analyst",
-        "Database Administrator (DBA)",
-        "Systems Architect",
-        "UI/UX Designer",
-        "Product Manager",
-        "Technical Program Manager (TPM)",
-        "QA / Automation Test Engineer"
+        "Machine Learning Engineer"
     ],
-    "Banking, Financial Services & Insurance (BFSI)": [
-        "Investment Banking Analyst",
-        "Financial Analyst / FP&A Specialist",
-        "Equity Research Analyst",
-        "Quantitative Analyst",
-        "Risk Analyst",
+    "Customer Service & Support": [
+        "Customer Service Representative",
+        "Customer Support Representative",
+        "Customer Success Associate",
+        "Technical Support Representative",
+        "IT Help Desk Support",
+        "Call Center Agent",
+        "Chat Support Agent"
+    ],
+    "Administrative & Data Entry": [
+        "Data Entry Operator",
+        "Virtual Assistant",
+        "Administrative Assistant",
+        "Executive Assistant",
+        "Receptionist",
+        "Back Office Executive",
+        "Office Administrator"
+    ],
+    "Sales & Marketing": [
+        "Sales Development Representative (SDR)",
+        "Business Development Associate",
+        "Inside Sales Representative",
+        "Account Executive",
+        "Digital Marketing Specialist",
+        "SEO Specialist",
+        "Content Writer",
+        "Social Media Manager"
+    ],
+    "Finance, Banking & Insurance": [
+        "Financial Analyst",
+        "Accountant",
+        "Auditor",
+        "Bookkeeper",
         "Credit Analyst",
-        "Underwriter",
-        "Compliance / AML Analyst",
-        "Actuary",
-        "Claims Adjuster",
-        "Accountant / Auditor",
-        "Branch Manager"
+        "Risk Analyst",
+        "Compliance Analyst",
+        "Underwriter"
     ],
-    "Healthcare & Life Sciences": [
-        "Registered Nurse (RN) / Nurse Practitioner",
-        "Physician Assistant",
-        "Pharmacist",
-        "Medical Technologist / Lab Technician",
-        "Clinical Research Associate (CRA)",
-        "Regulatory Affairs Specialist",
-        "Biomedical Engineer",
-        "Healthcare Administrator",
-        "Medical Coder / Biller",
-        "Physical Therapist"
+    "HR, Operations & Management": [
+        "Recruiter",
+        "HR Executive",
+        "Operations Manager",
+        "Project Manager",
+        "Program Manager",
+        "Management Consultant",
+        "Procurement Specialist"
     ],
-    "Manufacturing, Industrial & Automotive": [
-        "Plant / Operations Manager",
+    "Engineering, Manufacturing & Construction": [
         "Mechanical Engineer",
         "Electrical Engineer",
-        "Industrial / Process Engineer",
-        "Quality Assurance (QA/QC) Specialist",
-        "Production Planner",
-        "CNC Machinist",
-        "Maintenance Technician",
-        "Automation / Robotics Technician"
-    ],
-    "Construction & Real Estate": [
-        "Construction Project Manager",
         "Civil Engineer",
-        "Structural Engineer",
-        "MEP Engineer",
-        "BIM Modeler",
-        "Cost Estimator",
-        "Site Safety Specialist / Officer",
-        "Property Manager",
-        "Commercial Real Estate Broker / Leasing Associate"
+        "Quality Control Engineer",
+        "Production Planner",
+        "Maintenance Technician",
+        "Construction Project Manager",
+        "Site Safety Officer"
     ],
-    "Supply Chain, Logistics & Transportation": [
-        "Supply Chain Specialist / Manager",
+    "Supply Chain & Logistics": [
         "Logistics Coordinator",
-        "Fleet Manager",
-        "Warehouse Operations Manager",
+        "Supply Chain Analyst",
+        "Warehouse Manager",
         "Inventory Analyst",
-        "Procurement Specialist / Buyer",
-        "Freight Broker",
-        "Customs Broker / Import-Export Specialist"
+        "Procurement Executive",
+        "Fleet Manager"
     ],
-    "Consumer Goods, Retail & E-Commerce": [
-        "Store Manager / Assistant Store Manager",
+    "Healthcare & Life Sciences": [
+        "Registered Nurse",
+        "Pharmacist",
+        "Medical Coder",
+        "Clinical Research Associate",
+        "Healthcare Administrator",
+        "Lab Technician"
+    ],
+    "Retail, Hospitality & Travel": [
+        "Store Manager",
         "Retail Buyer",
-        "Category Specialist / Category Manager",
         "E-Commerce Operations Manager",
-        "Marketplace Specialist",
-        "Brand Specialist / Brand Manager",
-        "Loss Prevention Specialist"
+        "Hotel Operations Manager",
+        "Restaurant Manager",
+        "Travel Consultant"
     ],
-    "Professional, Legal & Business Services": [
-        "Management Consultant / Strategy Consultant",
-        "Corporate Counsel / Staff Attorney",
-        "Paralegal / Legal Assistant",
-        "HR Business Partner (HRBP)",
-        "Talent Acquisition Specialist / Recruiter",
-        "Compensation & Benefits Analyst",
-        "Growth Marketer / Digital Marketing Specialist",
-        "SEO / Content Specialist",
-        "Public Relations Specialist"
-    ],
-    "Media, Entertainment & Telecommunications": [
-        "Video Editor / Motion Graphics Designer",
-        "3D Artist / Animator",
-        "Technical Writer / Copywriter",
-        "Game Developer / Unity Programmer",
-        "RF (Radio Frequency) Engineer",
-        "Network Engineer",
-        "Telecom Technician"
-    ],
-    "Hospitality, Food Service & Tourism": [
-        "Hotel Operations Manager / Front Office Manager",
-        "Executive Chef / Kitchen Supervisor",
-        "Restaurant General Manager",
-        "Event / Banquet Sales Manager",
-        "Corporate Travel Consultant"
-    ],
-    "Education & Non-Profit": [
-        "Teacher / Instructor",
+    "Education, Media & Legal": [
+        "Teacher",
         "Instructional Designer",
-        "Academic Advisor / Admissions Counselor",
+        "Graphic Designer",
+        "Video Editor",
+        "Technical Writer",
         "Grant Writer",
-        "Non-Profit Program Manager",
-        "Monitoring & Evaluation (M&E) Specialist",
-        "Development / Fundraising Associate"
+        "Paralegal",
+        "Corporate Counsel"
     ]
 };
 
