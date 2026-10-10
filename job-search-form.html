@@ -77,6 +77,29 @@
   }
 
   .field { margin-bottom: 18px; }
+  [hidden] { display: none !important; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .chips:empty { display: none; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px 4px 12px;
+    font-size: 13px;
+    color: #0b4f46;
+    background: #e3f1ee;
+    border-radius: 999px;
+  }
+  .chip button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-size: 17px;
+    line-height: 1;
+    padding: 0 6px;
+    cursor: pointer;
+  }
 
   label {
     display: block;
@@ -172,26 +195,65 @@
 
   <section class="form-panel">
     <h1>Job Radar</h1>
-    <p class="sub">Get matching remote jobs by email.</p>
+    <p class="sub">Get matching jobs by email.</p>
 
     <form id="jobForm">
-      <div class="row two">
+      <div class="row">
         <div class="field">
           <label for="industry">Industry</label>
           <select id="industry" required>
             <option value="">Select an industry</option>
-            <option value="IT/Tech">IT / Tech</option>
-            <option value="Finance">Finance</option>
-            <option value="Marketing">Marketing</option>
-            <option value="Design">Design</option>
-            <option value="Data & Analytics">Data & Analytics</option>
-            <option value="Other">Other</option>
+            <option value="Information Technology &amp; Software">Information Technology &amp; Software</option>
+            <option value="Banking, Financial Services &amp; Insurance (BFSI)">Banking, Financial Services &amp; Insurance (BFSI)</option>
+            <option value="Healthcare &amp; Life Sciences">Healthcare &amp; Life Sciences</option>
+            <option value="Manufacturing, Industrial &amp; Automotive">Manufacturing, Industrial &amp; Automotive</option>
+            <option value="Construction &amp; Real Estate">Construction &amp; Real Estate</option>
+            <option value="Supply Chain, Logistics &amp; Transportation">Supply Chain, Logistics &amp; Transportation</option>
+            <option value="Consumer Goods, Retail &amp; E-Commerce">Consumer Goods, Retail &amp; E-Commerce</option>
+            <option value="Professional, Legal &amp; Business Services">Professional, Legal &amp; Business Services</option>
+            <option value="Media, Entertainment &amp; Telecommunications">Media, Entertainment &amp; Telecommunications</option>
+            <option value="Hospitality, Food Service &amp; Tourism">Hospitality, Food Service &amp; Tourism</option>
+            <option value="Education &amp; Non-Profit">Education &amp; Non-Profit</option>
           </select>
         </div>
         <div class="field">
-          <label for="roleType">Role type</label>
-          <select id="roleType" required disabled>
+          <label for="roleType">Roles <span class="optional">(choose up to 4)</span></label>
+          <select id="roleType" disabled>
             <option value="">Select an industry first</option>
+          </select>
+          <div class="chips" id="roleChips" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <div class="row two">
+        <div class="field">
+          <label for="workType">Work type</label>
+          <select id="workType" required>
+            <option value="remote">Remote</option>
+            <option value="onsite">In person</option>
+          </select>
+        </div>
+        <div class="field" id="countryField">
+          <label for="country">Open to candidates in</label>
+          <select id="country">
+            <option value="">Any country</option>
+            <option value="India">India</option>
+            <option value="United States">United States</option>
+            <option value="United Kingdom">United Kingdom</option>
+            <option value="Canada">Canada</option>
+            <option value="Germany">Germany</option>
+            <option value="Australia">Australia</option>
+            <option value="Singapore">Singapore</option>
+            <option value="United Arab Emirates">United Arab Emirates</option>
+          </select>
+        </div>
+        <div class="field" id="cityField" hidden>
+          <label for="city">City</label>
+          <select id="city">
+            <option value="">Select a city</option>
+            <option value="Mumbai">Mumbai</option>
+            <option value="Pune">Pune</option>
+            <option value="Bangalore">Bangalore</option>
           </select>
         </div>
       </div>
@@ -225,18 +287,138 @@
 <script>
   // ===== ROLE TYPE OPTIONS PER INDUSTRY =====
   const roleOptions = {
-    "IT/Tech": ["Backend", "Frontend", "Full-stack", "DevOps", "QA", "Mobile Development", "Cloud/Infrastructure"],
-    "Finance": ["Financial Analyst", "Accountant", "Investment Analyst", "Risk & Compliance", "FP&A", "Auditor"],
-    "Marketing": ["Digital Marketing", "Content Marketing", "SEO/SEM", "Social Media", "Growth Marketing", "Marketing Analyst"],
-    "Design": ["UI/UX Designer", "Product Designer", "Graphic Designer", "Motion Designer", "Design Systems"],
-    "Data & Analytics": ["Data Analyst", "Data Engineer", "Data Scientist", "BI Analyst", "Business Analyst", "Analytics Automation"],
-    "Other": ["Operations", "Customer Support", "HR/People", "Sales", "Project Management", "General"]
-  };
+    "Information Technology & Software": [
+        "Full-Stack Developer",
+        "Frontend Developer",
+        "Backend Developer",
+        "Mobile App Developer",
+        "DevOps Engineer",
+        "Site Reliability Engineer (SRE)",
+        "Cloud Solutions Architect",
+        "Data Engineer",
+        "Data Scientist",
+        "Machine Learning Engineer",
+        "Cybersecurity Analyst",
+        "Database Administrator (DBA)",
+        "Systems Architect",
+        "UI/UX Designer",
+        "Product Manager",
+        "Technical Program Manager (TPM)",
+        "QA / Automation Test Engineer"
+    ],
+    "Banking, Financial Services & Insurance (BFSI)": [
+        "Investment Banking Analyst",
+        "Financial Analyst / FP&A Specialist",
+        "Equity Research Analyst",
+        "Quantitative Analyst",
+        "Risk Analyst",
+        "Credit Analyst",
+        "Underwriter",
+        "Compliance / AML Analyst",
+        "Actuary",
+        "Claims Adjuster",
+        "Accountant / Auditor",
+        "Branch Manager"
+    ],
+    "Healthcare & Life Sciences": [
+        "Registered Nurse (RN) / Nurse Practitioner",
+        "Physician Assistant",
+        "Pharmacist",
+        "Medical Technologist / Lab Technician",
+        "Clinical Research Associate (CRA)",
+        "Regulatory Affairs Specialist",
+        "Biomedical Engineer",
+        "Healthcare Administrator",
+        "Medical Coder / Biller",
+        "Physical Therapist"
+    ],
+    "Manufacturing, Industrial & Automotive": [
+        "Plant / Operations Manager",
+        "Mechanical Engineer",
+        "Electrical Engineer",
+        "Industrial / Process Engineer",
+        "Quality Assurance (QA/QC) Specialist",
+        "Production Planner",
+        "CNC Machinist",
+        "Maintenance Technician",
+        "Automation / Robotics Technician"
+    ],
+    "Construction & Real Estate": [
+        "Construction Project Manager",
+        "Civil Engineer",
+        "Structural Engineer",
+        "MEP Engineer",
+        "BIM Modeler",
+        "Cost Estimator",
+        "Site Safety Specialist / Officer",
+        "Property Manager",
+        "Commercial Real Estate Broker / Leasing Associate"
+    ],
+    "Supply Chain, Logistics & Transportation": [
+        "Supply Chain Specialist / Manager",
+        "Logistics Coordinator",
+        "Fleet Manager",
+        "Warehouse Operations Manager",
+        "Inventory Analyst",
+        "Procurement Specialist / Buyer",
+        "Freight Broker",
+        "Customs Broker / Import-Export Specialist"
+    ],
+    "Consumer Goods, Retail & E-Commerce": [
+        "Store Manager / Assistant Store Manager",
+        "Retail Buyer",
+        "Category Specialist / Category Manager",
+        "E-Commerce Operations Manager",
+        "Marketplace Specialist",
+        "Brand Specialist / Brand Manager",
+        "Loss Prevention Specialist"
+    ],
+    "Professional, Legal & Business Services": [
+        "Management Consultant / Strategy Consultant",
+        "Corporate Counsel / Staff Attorney",
+        "Paralegal / Legal Assistant",
+        "HR Business Partner (HRBP)",
+        "Talent Acquisition Specialist / Recruiter",
+        "Compensation & Benefits Analyst",
+        "Growth Marketer / Digital Marketing Specialist",
+        "SEO / Content Specialist",
+        "Public Relations Specialist"
+    ],
+    "Media, Entertainment & Telecommunications": [
+        "Video Editor / Motion Graphics Designer",
+        "3D Artist / Animator",
+        "Technical Writer / Copywriter",
+        "Game Developer / Unity Programmer",
+        "RF (Radio Frequency) Engineer",
+        "Network Engineer",
+        "Telecom Technician"
+    ],
+    "Hospitality, Food Service & Tourism": [
+        "Hotel Operations Manager / Front Office Manager",
+        "Executive Chef / Kitchen Supervisor",
+        "Restaurant General Manager",
+        "Event / Banquet Sales Manager",
+        "Corporate Travel Consultant"
+    ],
+    "Education & Non-Profit": [
+        "Teacher / Instructor",
+        "Instructional Designer",
+        "Academic Advisor / Admissions Counselor",
+        "Grant Writer",
+        "Non-Profit Program Manager",
+        "Monitoring & Evaluation (M&E) Specialist",
+        "Development / Fundraising Associate"
+    ]
+};
 
   const industrySelect = document.getElementById('industry');
   const roleSelect = document.getElementById('roleType');
+  const roleChips = document.getElementById('roleChips');
+  const MAX_ROLES = 4;
+  let selectedRoles = [];
 
-  industrySelect.addEventListener('change', () => {
+  // Shows the roles of the chosen industry; roles already picked are greyed out.
+  function renderRoleOptions() {
     const industry = industrySelect.value;
     roleSelect.innerHTML = '';
     if (!industry) {
@@ -244,18 +426,75 @@
       roleSelect.innerHTML = '<option value="">Select an industry first</option>';
       return;
     }
-    roleSelect.disabled = false;
+    const full = selectedRoles.length >= MAX_ROLES;
+    roleSelect.disabled = full;
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = 'Select a role';
+    placeholder.textContent = full ? 'Maximum of ' + MAX_ROLES + ' roles chosen' : 'Add a role';
     roleSelect.appendChild(placeholder);
     roleOptions[industry].forEach(role => {
       const opt = document.createElement('option');
       opt.value = role;
       opt.textContent = role;
+      opt.disabled = selectedRoles.includes(role);
       roleSelect.appendChild(opt);
     });
+  }
+
+  function renderRoleChips() {
+    roleChips.innerHTML = '';
+    selectedRoles.forEach(role => {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      const label = document.createElement('span');
+      label.textContent = role;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = '\u00d7';
+      remove.setAttribute('aria-label', 'Remove ' + role);
+      remove.addEventListener('click', () => {
+        selectedRoles = selectedRoles.filter(r => r !== role);
+        renderRoleChips();
+        renderRoleOptions();
+      });
+      chip.appendChild(label);
+      chip.appendChild(remove);
+      roleChips.appendChild(chip);
+    });
+  }
+
+  industrySelect.addEventListener('change', renderRoleOptions);
+
+  roleSelect.addEventListener('change', () => {
+    const role = roleSelect.value;
+    if (role && !selectedRoles.includes(role) && selectedRoles.length < MAX_ROLES) {
+      selectedRoles.push(role);
+      renderRoleChips();
+      // Clear an earlier "choose a role" error now that a role is picked.
+      if (statusDiv.classList.contains('error')) {
+        statusDiv.textContent = '';
+        statusDiv.className = 'status';
+      }
+    }
+    renderRoleOptions();
   });
+
+  // ===== WORK TYPE: remote shows Country, in person shows City =====
+  const workTypeSelect = document.getElementById('workType');
+  const countryField = document.getElementById('countryField');
+  const cityField = document.getElementById('cityField');
+  const countrySelect = document.getElementById('country');
+  const citySelect = document.getElementById('city');
+
+  function updateWorkType() {
+    const onsite = workTypeSelect.value === 'onsite';
+    cityField.hidden = !onsite;
+    countryField.hidden = onsite;
+    citySelect.required = onsite;
+    if (onsite) countrySelect.value = '';
+    else citySelect.value = '';
+  }
+  workTypeSelect.addEventListener('change', updateWorkType);
 
   // ===== SUBMIT TO CLOUDFLARE WORKER =====
   const WEBHOOK_URL = "https://job-radar-worker.jobradar-alerts-app.workers.dev";
@@ -318,6 +557,13 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    if (selectedRoles.length === 0) {
+      statusDiv.textContent = "Please choose at least one role.";
+      statusDiv.className = 'status error';
+      roleSelect.focus();
+      return;
+    }
+
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
     statusDiv.textContent = '';
@@ -326,7 +572,11 @@
     try {
       const payload = {
         industry: industrySelect.value,
-        roleType: roleSelect.value,
+        roles: selectedRoles,
+        roleType: selectedRoles[0] || '',
+        workType: workTypeSelect.value,
+        city: workTypeSelect.value === 'onsite' ? citySelect.value : '',
+        country: workTypeSelect.value === 'remote' ? countrySelect.value : '',
         skills: document.getElementById('skills').value,
         email: document.getElementById('email').value,
         resumeFileName: null,
@@ -349,9 +599,11 @@
         statusDiv.textContent = "Done. Check your inbox shortly.";
         statusDiv.className = 'status success';
         form.reset();
-        roleSelect.disabled = true;
-        roleSelect.innerHTML = '<option value="">Select an industry first</option>';
+        selectedRoles = [];
+        renderRoleChips();
+        renderRoleOptions();
         resumeHint.textContent = DEFAULT_RESUME_HINT;
+        updateWorkType();
       } else {
         throw new Error('Request failed');
       }
