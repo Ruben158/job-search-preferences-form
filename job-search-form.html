@@ -79,6 +79,8 @@
   .field { margin-bottom: 18px; }
   [hidden] { display: none !important; }
 
+  .work-hint { margin: -8px 0 18px; }
+
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   .chips:empty { display: none; }
   .chip {
@@ -208,13 +210,14 @@
             <option value="Customer Service &amp; Support">Customer Service &amp; Support</option>
             <option value="Administrative &amp; Data Entry">Administrative &amp; Data Entry</option>
             <option value="Sales &amp; Marketing">Sales &amp; Marketing</option>
+            <option value="Media &amp; Creative">Media &amp; Creative</option>
             <option value="Finance, Banking &amp; Insurance">Finance, Banking &amp; Insurance</option>
-            <option value="HR, Operations &amp; Management">HR, Operations &amp; Management</option>
+            <option value="Business, HR &amp; Legal">Business, HR &amp; Legal</option>
             <option value="Engineering, Manufacturing &amp; Construction">Engineering, Manufacturing &amp; Construction</option>
             <option value="Supply Chain &amp; Logistics">Supply Chain &amp; Logistics</option>
             <option value="Healthcare &amp; Life Sciences">Healthcare &amp; Life Sciences</option>
             <option value="Retail, Hospitality &amp; Travel">Retail, Hospitality &amp; Travel</option>
-            <option value="Education, Media &amp; Legal">Education, Media &amp; Legal</option>
+            <option value="Education &amp; Training">Education &amp; Training</option>
           </select>
         </div>
         <div class="field">
@@ -256,6 +259,36 @@
             <option value="Pune">Pune</option>
             <option value="Bangalore">Bangalore</option>
           </select>
+        </div>
+      </div>
+
+      <p class="hint work-hint" id="workHint" hidden>Roles like these are usually in person. Try <strong>In person</strong> to search Mumbai, Pune or Bangalore.</p>
+
+      <div class="row two">
+        <div class="field">
+          <label for="experience">Experience</label>
+          <select id="experience">
+            <option value="">Any / not sure</option>
+            <option value="0-1">Fresher (under 1 year)</option>
+            <option value="1-3">1 to 3 years</option>
+            <option value="3-5">3 to 5 years</option>
+            <option value="5-8">5 to 8 years</option>
+            <option value="8+">8+ years</option>
+          </select>
+          <span class="hint" id="experienceHint">Filled in from your resume if you upload one.</span>
+        </div>
+        <div class="field" id="salaryField" hidden>
+          <label for="salary">Expected salary per year</label>
+          <select id="salary">
+            <option value="">Any salary</option>
+            <option value="0-3">Up to 3 LPA</option>
+            <option value="3-5">3 to 5 LPA</option>
+            <option value="5-8">5 to 8 LPA</option>
+            <option value="8-12">8 to 12 LPA</option>
+            <option value="12-20">12 to 20 LPA</option>
+            <option value="20+">Above 20 LPA</option>
+          </select>
+          <span class="hint">Jobs with no listed salary are still shown.</span>
         </div>
       </div>
 
@@ -315,10 +348,12 @@
         "Technical Support Representative",
         "IT Help Desk Support",
         "Call Center Agent",
-        "Chat Support Agent"
+        "Chat Support Agent",
+        "Telecaller"
     ],
     "Administrative & Data Entry": [
         "Data Entry Operator",
+        "Data Annotation Specialist",
         "Virtual Assistant",
         "Administrative Assistant",
         "Executive Assistant",
@@ -330,11 +365,25 @@
         "Sales Development Representative (SDR)",
         "Business Development Associate",
         "Inside Sales Representative",
+        "Telesales Executive",
         "Account Executive",
         "Digital Marketing Specialist",
         "SEO Specialist",
         "Content Writer",
         "Social Media Manager"
+    ],
+    "Media & Creative": [
+        "Graphic Designer",
+        "Video Editor",
+        "Motion Graphics Designer",
+        "3D Artist",
+        "Animator",
+        "VFX Artist",
+        "Game Developer",
+        "Illustrator",
+        "Photographer",
+        "Copywriter",
+        "Technical Writer"
     ],
     "Finance, Banking & Insurance": [
         "Financial Analyst",
@@ -346,14 +395,16 @@
         "Compliance Analyst",
         "Underwriter"
     ],
-    "HR, Operations & Management": [
+    "Business, HR & Legal": [
         "Recruiter",
         "HR Executive",
         "Operations Manager",
         "Project Manager",
         "Program Manager",
         "Management Consultant",
-        "Procurement Specialist"
+        "Procurement Specialist",
+        "Paralegal",
+        "Corporate Counsel"
     ],
     "Engineering, Manufacturing & Construction": [
         "Mechanical Engineer",
@@ -389,15 +440,14 @@
         "Restaurant Manager",
         "Travel Consultant"
     ],
-    "Education, Media & Legal": [
+    "Education & Training": [
         "Teacher",
+        "Online Tutor",
         "Instructional Designer",
-        "Graphic Designer",
-        "Video Editor",
-        "Technical Writer",
-        "Grant Writer",
-        "Paralegal",
-        "Corporate Counsel"
+        "Corporate Trainer",
+        "Curriculum Developer",
+        "Academic Counselor",
+        "Grant Writer"
     ]
 };
 
@@ -451,6 +501,7 @@
       chip.appendChild(remove);
       roleChips.appendChild(chip);
     });
+    updateWorkHint();
   }
 
   industrySelect.addEventListener('change', renderRoleOptions);
@@ -476,13 +527,43 @@
   const countrySelect = document.getElementById('country');
   const citySelect = document.getElementById('city');
 
+  const salaryField = document.getElementById('salaryField');
+  const salarySelect = document.getElementById('salary');
+  const experienceSelect = document.getElementById('experience');
+  const experienceHint = document.getElementById('experienceHint');
+  const workHint = document.getElementById('workHint');
+  const DEFAULT_EXPERIENCE_HINT = "Filled in from your resume if you upload one.";
+
+  // Roles that are rarely advertised as remote: suggest the In person option for them.
+  const ONSITE_LEANING = new Set([
+    "Mechanical Engineer", "Electrical Engineer", "Civil Engineer", "Quality Control Engineer", "Production Planner",
+    "Maintenance Technician", "Construction Project Manager", "Site Safety Officer", "Logistics Coordinator",
+    "Warehouse Manager", "Fleet Manager", "Registered Nurse", "Pharmacist", "Lab Technician", "Store Manager",
+    "Retail Buyer", "Hotel Operations Manager", "Restaurant Manager", "Receptionist", "Teacher", "Photographer"
+  ]);
+
+  function updateWorkHint() {
+    workHint.hidden = !(workTypeSelect.value === 'remote' && selectedRoles.some(r => ONSITE_LEANING.has(r)));
+  }
+
+  // Turns years of experience (estimated from the resume) into one of the dropdown's bands.
+  function bandFromYears(years) {
+    if (years < 1) return '0-1';
+    if (years < 3) return '1-3';
+    if (years < 5) return '3-5';
+    if (years < 8) return '5-8';
+    return '8+';
+  }
+
   function updateWorkType() {
     const onsite = workTypeSelect.value === 'onsite';
     cityField.hidden = !onsite;
     countryField.hidden = onsite;
+    salaryField.hidden = !onsite;
     citySelect.required = onsite;
     if (onsite) countrySelect.value = '';
-    else citySelect.value = '';
+    else { citySelect.value = ''; salarySelect.value = ''; }
+    updateWorkHint();
   }
   workTypeSelect.addEventListener('change', updateWorkType);
 
@@ -517,6 +598,7 @@
     const file = resumeInput.files[0];
     if (!file) {
       resumeHint.textContent = DEFAULT_RESUME_HINT;
+      experienceHint.textContent = DEFAULT_EXPERIENCE_HINT;
       return;
     }
 
@@ -533,6 +615,10 @@
       if (!response.ok) throw new Error('Extraction failed');
 
       const data = await response.json();
+      if (typeof data.experienceYears === 'number') {
+        experienceSelect.value = bandFromYears(data.experienceYears);
+        experienceHint.textContent = "Estimated from your resume. Please check it.";
+      }
       if (data.skills && data.skills.length > 0) {
         skillsInput.value = data.skills.join(', ');
         resumeHint.textContent = "Skills filled in. You can edit them.";
@@ -563,6 +649,8 @@
       const payload = {
         industry: industrySelect.value,
         roles: selectedRoles,
+        experience: experienceSelect.value,
+        salary: workTypeSelect.value === 'onsite' ? salarySelect.value : '',
         roleType: selectedRoles[0] || '',
         workType: workTypeSelect.value,
         city: workTypeSelect.value === 'onsite' ? citySelect.value : '',
@@ -593,6 +681,7 @@
         renderRoleChips();
         renderRoleOptions();
         resumeHint.textContent = DEFAULT_RESUME_HINT;
+        experienceHint.textContent = DEFAULT_EXPERIENCE_HINT;
         updateWorkType();
       } else {
         throw new Error('Request failed');
