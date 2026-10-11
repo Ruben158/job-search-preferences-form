@@ -209,7 +209,8 @@
             <option value="Data &amp; Analytics">Data &amp; Analytics</option>
             <option value="Customer Service &amp; Support">Customer Service &amp; Support</option>
             <option value="Administrative &amp; Data Entry">Administrative &amp; Data Entry</option>
-            <option value="Sales &amp; Marketing">Sales &amp; Marketing</option>
+            <option value="Sales">Sales</option>
+            <option value="Marketing">Marketing</option>
             <option value="Media &amp; Creative">Media &amp; Creative</option>
             <option value="Finance, Banking &amp; Insurance">Finance, Banking &amp; Insurance</option>
             <option value="Business, HR &amp; Legal">Business, HR &amp; Legal</option>
@@ -307,6 +308,7 @@
       <div class="field">
         <label for="email">Email</label>
         <input type="email" id="email" placeholder="you@example.com" required>
+        <span class="hint" id="emailHint" hidden>Found on your resume. Please check it.</span>
       </div>
 
       <button type="submit" id="submitBtn">Find my matches</button>
@@ -335,6 +337,10 @@
     "Data & Analytics": [
         "Data Analyst",
         "Junior Data Analyst",
+        "MIS Executive",
+        "MIS Analyst",
+        "Reporting Analyst",
+        "Research Analyst",
         "Business Analyst",
         "Business Intelligence Analyst",
         "Data Engineer",
@@ -348,8 +354,7 @@
         "Technical Support Representative",
         "IT Help Desk Support",
         "Call Center Agent",
-        "Chat Support Agent",
-        "Telecaller"
+        "Chat Support Agent"
     ],
     "Administrative & Data Entry": [
         "Data Entry Operator",
@@ -361,16 +366,26 @@
         "Back Office Executive",
         "Office Administrator"
     ],
-    "Sales & Marketing": [
+    "Sales": [
         "Sales Development Representative (SDR)",
         "Business Development Associate",
         "Inside Sales Representative",
         "Telesales Executive",
+        "Telecaller",
+        "Sales Executive",
+        "Field Sales Executive",
         "Account Executive",
+        "Relationship Manager",
+        "Lead Generation Specialist"
+    ],
+    "Marketing": [
         "Digital Marketing Specialist",
+        "Performance Marketing Specialist",
         "SEO Specialist",
+        "Social Media Manager",
         "Content Writer",
-        "Social Media Manager"
+        "Email Marketing Specialist",
+        "Marketing Executive"
     ],
     "Media & Creative": [
         "Graphic Designer",
@@ -592,6 +607,9 @@
 
   // ===== AUTO-FILL SKILLS FROM RESUME =====
   const skillsInput = document.getElementById('skills');
+  const emailInput = document.getElementById('email');
+  const emailHint = document.getElementById('emailHint');
+  emailInput.addEventListener('input', () => { emailHint.hidden = true; });
   const resumeHint = document.getElementById('resumeHint');
 
   resumeInput.addEventListener('change', async () => {
@@ -615,6 +633,11 @@
       if (!response.ok) throw new Error('Extraction failed');
 
       const data = await response.json();
+      // Fill in the email only if the person hasn't typed one already.
+      if (data.email && !emailInput.value.trim()) {
+        emailInput.value = data.email;
+        emailHint.hidden = false;
+      }
       if (typeof data.experienceYears === 'number') {
         experienceSelect.value = bandFromYears(data.experienceYears);
         experienceHint.textContent = "Estimated from your resume. Please check it.";
@@ -682,6 +705,7 @@
         renderRoleOptions();
         resumeHint.textContent = DEFAULT_RESUME_HINT;
         experienceHint.textContent = DEFAULT_EXPERIENCE_HINT;
+        emailHint.hidden = true;
         updateWorkType();
       } else {
         throw new Error('Request failed');
