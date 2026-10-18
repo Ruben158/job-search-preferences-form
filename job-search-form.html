@@ -3,272 +3,362 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
 <title>Job Radar</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <style>
   :root {
-    --ink: #12262b;
-    --ink-soft: #c9d8da;
-    --page: #eef1f3;
-    --surface: #ffffff;
-    --text: #172026;
-    --muted: #55616a;
-    --border: #cfd6db;
-    --accent: #0b6b5f;
-    --accent-dark: #08524a;
-    --error: #b42318;
-    --success: #0b6b3a;
+    color-scheme: dark;
+    --bg-page: #09090b;
+    --bg-card: #121215;
+    --bg-elevated: #18181c;
+    --bg-input: #141418;
+    --border-subtle: #222228;
+    --border-input: #2e2e36;
+    --text-main: #f4f4f5;
+    --text-muted: #8e8e99;
+    --placeholder: #85858f;
+    --pill-active-bg: #172554;
+    --pill-active-border: #2563eb;
+    --pill-active-text: #60a5fa;
+    --cta-bg: #8ab4f8;
+    --ok: #4ade80;
+    --error: #f87171;
   }
 
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
   body {
-    margin: 0;
     min-height: 100vh;
+    padding: 18px 12px 44px;
+    display: flex;
+    justify-content: center;
+    background-color: var(--bg-page);
+    color: var(--text-main);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height: 1.5;
+  }
+
+  /* Faint radar rings behind the card */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 70% 45% at 50% 0%, rgba(37, 99, 235, 0.16), transparent 70%),
+      repeating-radial-gradient(circle at 50% 18%, transparent 0, transparent 89px, rgba(96, 165, 250, 0.05) 89px, rgba(96, 165, 250, 0.05) 90px);
+  }
+
+  .radar-container { width: 100%; max-width: 520px; }
+
+  :focus-visible { outline: 2px solid var(--pill-active-text); outline-offset: 2px; }
+
+  /* ---------- Header ---------- */
+  .radar-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 0 4px;
+  }
+  .radar-header h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; }
+  .radar-header p { color: var(--text-muted); font-size: 0.85rem; margin-top: 2px; }
+
+  /* The dot only pulses while a search is running */
+  .radar-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: var(--pill-active-bg);
+    border: 1px solid var(--pill-active-border);
+    color: var(--pill-active-text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    white-space: nowrap;
+  }
+  .radar-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #93c5fd; box-shadow: 0 0 8px #60a5fa; }
+  .radar-badge.scanning .dot { animation: pulseDot 1.4s infinite ease-in-out; }
+  @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(1.4); } }
+
+  /* ---------- Card ---------- */
+  .card {
+    padding: 20px 18px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 20px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  }
+
+  .field-group { margin-bottom: 18px; }
+  .field-group[hidden], [hidden] { display: none !important; }
+
+  .field-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .field-label { font-size: 0.9rem; font-weight: 500; color: #e4e4e7; }
+  .field-meta { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-style: italic; color: var(--text-muted); }
+  .helper-note { margin-top: 6px; font-size: 0.78rem; line-height: 1.4; color: var(--text-muted); }
+  .helper-note.warn { color: #fbbf24; }
+
+  /* ---------- Resume card ---------- */
+  .resume-card {
+    position: relative;
+    margin-bottom: 20px;
+    padding: 14px;
+    background: linear-gradient(180deg, rgba(23, 37, 84, 0.28) 0%, rgba(24, 24, 28, 0.6) 100%);
+    border: 1px dashed #2e3b5e;
+    border-radius: 14px;
+  }
+  .resume-card-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .resume-title { font-size: 0.88rem; font-weight: 600; color: var(--pill-active-text); }
+
+  .consent-label { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; font-size: 0.78rem; line-height: 1.45; color: var(--text-muted); cursor: pointer; }
+  .consent-label input[type="checkbox"] { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; accent-color: var(--pill-active-border); cursor: pointer; }
+  .consent-label a { color: var(--pill-active-text); }
+
+  /* The real file input stays focusable; the label is what people see */
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .file-upload-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    border-radius: 10px;
+    font-size: 0.88rem;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+  .file-upload-btn .file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+  .file-upload-btn .btn-tag { flex-shrink: 0; padding: 5px 10px; background: var(--bg-elevated); border: 1px solid #2e2e38; border-radius: 6px; font-size: 0.78rem; font-weight: 500; color: var(--pill-active-text); }
+  .file-upload-btn.disabled { opacity: 0.5; cursor: not-allowed; }
+  .file-upload-btn:not(.disabled):hover { border-color: var(--pill-active-text); }
+  .file-upload-btn.has-file .file-name { color: var(--text-main); }
+  #resume:focus-visible + .file-upload-btn { outline: 2px solid var(--pill-active-text); outline-offset: 2px; }
+
+  /* ---------- Inputs (16px stops mobile browsers zooming on tap) ---------- */
+  .dark-select, .dark-input {
+    width: 100%;
+    min-height: 46px;
+    padding: 11px 14px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    border-radius: 12px;
+    color: var(--text-main);
+    font: inherit;
+    font-size: 1rem;
+    transition: border-color 0.15s ease;
+  }
+  .dark-input::placeholder { color: var(--placeholder); }
+  .dark-select:focus, .dark-input:focus { outline: none; border-color: var(--pill-active-text); box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18); }
+  .dark-select:disabled { opacity: 0.5; cursor: not-allowed; }
+  .dark-input:user-invalid, .dark-select:user-invalid { border-color: var(--error); }
+
+  /* ---------- Pills (chosen roles and typed skills) ---------- */
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .pill-row:empty { display: none; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 6px 12px 6px 14px;
+    background: var(--pill-active-bg);
+    border: 1px solid var(--pill-active-border);
+    border-radius: 999px;
+    color: var(--pill-active-text);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .pill .remove-x { font-size: 1rem; line-height: 1; opacity: 0.85; }
+  .pill:hover .remove-x { opacity: 1; }
+  .pill.skill { background: var(--bg-elevated); border-color: #26262c; color: #d4d4d8; font-weight: 400; }
+
+  /* ---------- Work type (two radio buttons styled as a switch) ---------- */
+  .segmented-track {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 4px;
+    background: #0b0b0e;
+    border: 1px solid #1f1f24;
+    border-radius: 12px;
+  }
+  .seg-option { position: relative; display: block; }
+  .seg-option input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .seg-option span {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 32px 16px;
-    color: var(--text);
-    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    line-height: 1.5;
-    background-color: #0d2025;
-    background-image:
-      radial-gradient(ellipse 60% 50% at 50% 45%, rgba(24, 140, 124, 0.35), transparent 70%),
-      repeating-radial-gradient(circle at 50% 45%, transparent 0, transparent 71px, rgba(255, 255, 255, 0.07) 71px, rgba(255, 255, 255, 0.07) 72px),
-      linear-gradient(160deg, #12303a 0%, #0b1b20 100%);
-    background-attachment: fixed;
-  }
-
-  .shell {
-    width: 100%;
-    max-width: 520px;
-    background: var(--surface);
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), 0 24px 60px rgba(0, 0, 0, 0.35);
-  }
-
-  /* ---------- Form panel ---------- */
-  .form-panel { padding: 36px 32px; }
-
-  .form-panel h1 {
-    font-size: 24px;
-    font-weight: 600;
-    margin: 0 0 4px;
-  }
-
-  .form-panel .sub {
-    margin: 0 0 24px;
-    color: var(--muted);
-    font-size: 14px;
-  }
-
-  .row {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0 16px;
-  }
-
-  @media (min-width: 560px) {
-    .row.two { grid-template-columns: 1fr 1fr; }
-  }
-
-  .field { margin-bottom: 18px; }
-  [hidden] { display: none !important; }
-
-  .work-hint { margin: -8px 0 18px; }
-
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-  .chips:empty { display: none; }
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 6px 4px 12px;
-    font-size: 13px;
-    color: #0b4f46;
-    background: #e3f1ee;
-    border-radius: 999px;
-  }
-  .chip button {
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font-size: 17px;
-    line-height: 1;
-    padding: 0 6px;
-    cursor: pointer;
-  }
-
-  label {
-    display: block;
-    font-size: 14px;
+    min-height: 38px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    color: var(--text-muted);
+    font-size: 0.88rem;
     font-weight: 500;
-    margin-bottom: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
   }
+  .seg-option input:checked + span { background: var(--pill-active-bg); border-color: var(--pill-active-border); color: var(--pill-active-text); }
+  .seg-option input:focus-visible + span { outline: 2px solid var(--pill-active-text); outline-offset: 2px; }
 
-  .optional { color: var(--muted); font-weight: 400; }
+  .conditional-reveal { animation: fadeSlideIn 0.2s ease-out; }
+  @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 
-  select, input[type="text"], input[type="email"], input[type="file"] {
+  /* Experience, plus Salary when In person is chosen */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+  .two-col.single { grid-template-columns: 1fr; }
+  @media (max-width: 400px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* ---------- Email check mark ---------- */
+  .input-wrapper { position: relative; display: flex; align-items: center; }
+  .input-wrapper .dark-input { padding-right: 40px; }
+  .input-check { position: absolute; right: 14px; display: none; color: var(--ok); font-size: 1rem; pointer-events: none; }
+  .input-check.valid { display: inline; }
+
+  /* ---------- Submit ---------- */
+  .cta-btn {
     width: 100%;
-    padding: 10px 12px;
+    min-height: 50px;
+    background: var(--cta-bg);
+    border: none;
+    border-radius: 999px;
+    color: #09090b;
     font: inherit;
-    font-size: 15px;
-    color: var(--text);
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-  }
-
-  select:disabled { background: #f3f5f6; color: #8a949b; }
-
-  input::placeholder { color: #8a949b; }
-
-  input[type="file"] { padding: 7px 8px; }
-
-  input[type="file"]::file-selector-button {
-    font: inherit;
-    font-size: 14px;
-    margin-right: 12px;
-    padding: 6px 12px;
-    color: var(--text);
-    background: #f3f5f6;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    cursor: pointer;
-  }
-
-  select:focus-visible, input:focus-visible, button:focus-visible, a:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-
-  .hint {
-    display: block;
-    margin-top: 6px;
-    font-size: 13px;
-    color: var(--muted);
-  }
-
-  button[type="submit"] {
-    width: 100%;
-    margin-top: 6px;
-    padding: 12px 16px;
-    font: inherit;
-    font-size: 16px;
+    font-size: 1rem;
     font-weight: 600;
-    color: #fff;
-    background: var(--accent);
-    border: 0;
-    border-radius: 4px;
     cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.1s ease;
   }
+  .cta-btn:hover { opacity: 0.92; }
+  .cta-btn:active { transform: scale(0.99); }
+  .cta-btn:disabled { opacity: 0.6; cursor: wait; }
 
-  button[type="submit"]:hover { background: var(--accent-dark); }
-  button[type="submit"]:disabled { background: #9db3b0; cursor: not-allowed; }
-
-  .status {
-    margin-top: 14px;
-    font-size: 14px;
-    min-height: 20px;
-  }
-  .status.success { color: var(--success); }
+  .status { min-height: 22px; margin-top: 14px; font-size: 0.9rem; text-align: center; }
+  .status.success { color: var(--ok); }
   .status.error { color: var(--error); }
 
-  .footer-note {
-    margin: 24px 0 0;
-    padding-top: 16px;
-    border-top: 1px solid var(--border);
-    font-size: 13px;
-    color: var(--muted);
-  }
-  .footer-note a { color: var(--accent); }
+  .footer-links { margin-top: 14px; text-align: center; font-size: 0.78rem; color: var(--text-muted); }
+  .footer-links a { color: var(--text-muted); }
 
   @media (prefers-reduced-motion: reduce) {
-    * { transition: none !important; animation: none !important; }
+    * { animation: none !important; transition: none !important; }
   }
 </style>
 </head>
 <body>
-<div class="shell">
 
-  <section class="form-panel">
-    <h1>Job Radar</h1>
-    <p class="sub">Get matching jobs by email.</p>
+<div class="radar-container">
+  <header class="radar-header">
+    <div>
+      <h1>Job Radar</h1>
+      <p>Get matching jobs by email.</p>
+    </div>
+    <div class="radar-badge" id="radarBadge" role="status"><span class="dot"></span><span id="radarLabel">FREE</span></div>
+  </header>
 
+  <main class="card">
     <form id="jobForm">
-      <div class="row">
-        <div class="field">
-          <label for="industry">Industry</label>
-          <select id="industry" required>
-            <option value="">Select an industry</option>
-            <option value="IT &amp; Software">IT &amp; Software</option>
-            <option value="Data &amp; Analytics">Data &amp; Analytics</option>
-            <option value="Customer Service &amp; Support">Customer Service &amp; Support</option>
-            <option value="Administrative &amp; Data Entry">Administrative &amp; Data Entry</option>
-            <option value="Sales">Sales</option>
-            <option value="Marketing">Marketing</option>
-            <option value="Media &amp; Creative">Media &amp; Creative</option>
-            <option value="Finance, Banking &amp; Insurance">Finance, Banking &amp; Insurance</option>
-            <option value="Business, HR &amp; Legal">Business, HR &amp; Legal</option>
-            <option value="Engineering, Manufacturing &amp; Construction">Engineering, Manufacturing &amp; Construction</option>
-            <option value="Supply Chain &amp; Logistics">Supply Chain &amp; Logistics</option>
-            <option value="Healthcare &amp; Life Sciences">Healthcare &amp; Life Sciences</option>
-            <option value="Retail, Hospitality &amp; Travel">Retail, Hospitality &amp; Travel</option>
-            <option value="Education &amp; Training">Education &amp; Training</option>
-          </select>
+
+      <!-- Resume first: it fills in skills, experience and email below -->
+      <div class="resume-card">
+        <div class="resume-card-header">
+          <span class="resume-title">Resume (optional)</span>
+          <span class="field-meta">Gemini AI auto-fill</span>
         </div>
-        <div class="field">
-          <label for="roleType">Roles <span class="optional">(choose up to 4)</span></label>
-          <select id="roleType" disabled>
-            <option value="">Select an industry first</option>
-          </select>
-          <div class="chips" id="roleChips" aria-live="polite"></div>
-        </div>
+        <label class="consent-label" for="resumeConsent">
+          <input type="checkbox" id="resumeConsent">
+          <span>I agree to my resume being read by Google's Gemini AI. On Google's free tier, Google may use it to improve its products and reviewers may read it. Job Radar does not keep it. <a href="privacy-policy.html">Details</a></span>
+        </label>
+        <input type="file" id="resume" class="visually-hidden" accept="application/pdf" disabled>
+        <label class="file-upload-btn disabled" id="fileLabel" for="resume">
+          <span class="file-name" id="fileName">No file chosen</span>
+          <span class="btn-tag">Choose file</span>
+        </label>
+        <p class="helper-note" id="resumeHint" aria-live="polite">Upload a PDF to fill in your skills, experience and email.</p>
       </div>
 
-      <div class="row two">
-        <div class="field">
-          <label for="workType">Work type</label>
-          <select id="workType" required>
-            <option value="remote">Remote</option>
-            <option value="onsite">In person</option>
-          </select>
-        </div>
-        <div class="field" id="countryField">
-          <label for="country">Open to candidates in</label>
-          <select id="country">
-            <option value="">Any country</option>
-            <option value="India">India</option>
-            <option value="United States">United States</option>
-            <option value="United Kingdom">United Kingdom</option>
-            <option value="Canada">Canada</option>
-            <option value="Germany">Germany</option>
-            <option value="Australia">Australia</option>
-            <option value="Singapore">Singapore</option>
-            <option value="United Arab Emirates">United Arab Emirates</option>
-          </select>
-        </div>
-        <div class="field" id="cityField" hidden>
-          <label for="city">City</label>
-          <select id="city">
-            <option value="">Select a city</option>
-            <option value="Mumbai">Mumbai</option>
-            <option value="Pune">Pune</option>
-            <option value="Bangalore">Bangalore</option>
-          </select>
-        </div>
+      <div class="field-group">
+        <div class="field-header"><label class="field-label" for="industry">Industry</label></div>
+        <select class="dark-select" id="industry" required>
+          <option value="">Select an industry</option>
+          <option value="IT &amp; Software">IT &amp; Software</option>
+          <option value="Data &amp; Analytics">Data &amp; Analytics</option>
+          <option value="Customer Service &amp; Support">Customer Service &amp; Support</option>
+          <option value="Administrative &amp; Data Entry">Administrative &amp; Data Entry</option>
+          <option value="Sales">Sales</option>
+          <option value="Marketing">Marketing</option>
+          <option value="Media &amp; Creative">Media &amp; Creative</option>
+          <option value="Finance, Banking &amp; Insurance">Finance, Banking &amp; Insurance</option>
+          <option value="Business, HR &amp; Legal">Business, HR &amp; Legal</option>
+          <option value="Engineering, Manufacturing &amp; Construction">Engineering, Manufacturing &amp; Construction</option>
+          <option value="Supply Chain &amp; Logistics">Supply Chain &amp; Logistics</option>
+          <option value="Healthcare &amp; Life Sciences">Healthcare &amp; Life Sciences</option>
+          <option value="Retail, Hospitality &amp; Travel">Retail, Hospitality &amp; Travel</option>
+          <option value="Education &amp; Training">Education &amp; Training</option>
+        </select>
       </div>
 
-      <p class="hint work-hint" id="workHint" hidden>Roles like these are usually in person. Try <strong>In person</strong> to search Mumbai, Pune or Bangalore.</p>
+      <div class="field-group">
+        <div class="field-header">
+          <label class="field-label" for="roleType">Roles</label>
+          <span class="field-meta" id="rolesCounter">choose up to 4</span>
+        </div>
+        <div class="pill-row" id="rolePills"></div>
+        <select class="dark-select" id="roleType" disabled>
+          <option value="">Select an industry first</option>
+        </select>
+      </div>
 
-      <div class="row two">
-        <div class="field">
-          <label for="experience">Experience</label>
-          <select id="experience">
+      <div class="field-group">
+        <div class="field-header"><span class="field-label" id="workTypeLabel">Work type</span></div>
+        <div class="segmented-track" role="radiogroup" aria-labelledby="workTypeLabel">
+          <label class="seg-option"><input type="radio" name="workType" id="workRemote" value="remote" checked><span>Remote</span></label>
+          <label class="seg-option"><input type="radio" name="workType" id="workOnsite" value="onsite"><span>In person</span></label>
+        </div>
+        <p class="helper-note warn" id="workHint" hidden>Roles like these are usually in person. Try <strong>In person</strong> to search Mumbai, Pune or Bangalore.</p>
+      </div>
+
+      <div class="field-group" id="countryField">
+        <div class="field-header"><label class="field-label" for="country">Open to candidates in</label></div>
+        <select class="dark-select" id="country">
+          <option value="">Any country</option>
+          <option value="India">India</option>
+          <option value="United States">United States</option>
+          <option value="United Kingdom">United Kingdom</option>
+          <option value="Canada">Canada</option>
+          <option value="Germany">Germany</option>
+          <option value="Australia">Australia</option>
+          <option value="Singapore">Singapore</option>
+          <option value="United Arab Emirates">United Arab Emirates</option>
+        </select>
+      </div>
+
+      <div class="field-group" id="cityField" hidden>
+        <div class="field-header"><label class="field-label" for="city">City</label></div>
+        <select class="dark-select" id="city">
+          <option value="">Select a city</option>
+          <option value="Mumbai">Mumbai</option>
+          <option value="Pune">Pune</option>
+          <option value="Bangalore">Bangalore</option>
+        </select>
+      </div>
+
+      <div class="field-group two-col single" id="expSalaryRow">
+        <div>
+          <div class="field-header"><label class="field-label" for="experience">Experience</label></div>
+          <select class="dark-select" id="experience">
             <option value="">Any / not sure</option>
             <option value="0-1">Fresher (under 1 year)</option>
             <option value="1-3">1 to 3 years</option>
@@ -276,11 +366,11 @@
             <option value="5-8">5 to 8 years</option>
             <option value="8+">8+ years</option>
           </select>
-          <span class="hint" id="experienceHint">Filled in from your resume if you upload one.</span>
+          <p class="helper-note" id="experienceHint">Filled in from your resume if you upload one.</p>
         </div>
-        <div class="field" id="salaryField" hidden>
-          <label for="salary">Expected salary per year</label>
-          <select id="salary">
+        <div id="salaryField" hidden>
+          <div class="field-header"><label class="field-label" for="salary">Expected salary per year</label></div>
+          <select class="dark-select" id="salary">
             <option value="">Any salary</option>
             <option value="0-3">Up to 3 LPA</option>
             <option value="3-5">3 to 5 LPA</option>
@@ -289,194 +379,244 @@
             <option value="12-20">12 to 20 LPA</option>
             <option value="20+">Above 20 LPA</option>
           </select>
-          <span class="hint">Jobs with no listed salary are still shown.</span>
+          <p class="helper-note">Jobs with no listed salary are still shown.</p>
         </div>
       </div>
 
-      <div class="field">
-        <label for="resume">Resume <span class="optional">(optional)</span></label>
-        <input type="file" id="resume" accept="application/pdf">
-        <span class="hint" id="resumeHint" aria-live="polite">Upload a PDF to fill in your skills.</span>
+      <div class="field-group">
+        <div class="field-header">
+          <label class="field-label" for="skills">Key skills</label>
+          <span class="field-meta">Separate with commas</span>
+        </div>
+        <div class="pill-row" id="skillPills"></div>
+        <input type="text" class="dark-input" id="skills" placeholder="e.g. python, sql, power bi" autocomplete="off" required>
       </div>
 
-      <div class="field">
-        <label for="skills">Key skills</label>
-        <input type="text" id="skills" placeholder="e.g. python, sql, power bi" required>
-        <span class="hint">Separate with commas.</span>
+      <div class="field-group">
+        <div class="field-header"><label class="field-label" for="email">Email</label></div>
+        <div class="input-wrapper">
+          <input type="email" class="dark-input" id="email" placeholder="you@example.com" autocomplete="email" required>
+          <span class="input-check" id="emailCheck" aria-hidden="true">&#10003;</span>
+        </div>
+        <p class="helper-note" id="emailHint" hidden>Found on your resume. Please check it.</p>
       </div>
 
-      <div class="field">
-        <label for="email">Email</label>
-        <input type="email" id="email" placeholder="you@example.com" required>
-        <span class="hint" id="emailHint" hidden>Found on your resume. Please check it.</span>
-      </div>
+      <button type="submit" class="cta-btn" id="submitBtn">Find my matches</button>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
 
-      <button type="submit" id="submitBtn">Find my matches</button>
-      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <div class="footer-links"><a href="privacy-policy.html">Privacy policy</a></div>
     </form>
-
-    <p class="footer-note"><a href="privacy-policy.html">Privacy policy</a></p>
-  </section>
-
+  </main>
 </div>
 
 <script>
-  // ===== ROLE TYPE OPTIONS PER INDUSTRY =====
+(function () {
+  'use strict';
+
+  const WEBHOOK_URL = "https://job-radar-worker.jobradar-alerts-app.workers.dev";
+  const MAX_ROLES = 4;
+  const DEFAULT_RESUME_HINT = "Upload a PDF to fill in your skills, experience and email.";
+  const DEFAULT_EXPERIENCE_HINT = "Filled in from your resume if you upload one.";
+
+  // ===== INDUSTRIES AND THEIR ROLES =====
   const roleOptions = {
-    "IT & Software": [
-        "Software Engineer",
-        "Java Developer",
-        "Python Developer",
-        ".NET Developer",
-        "Full-Stack Developer",
-        "Frontend Developer",
-        "Backend Developer",
-        "Mobile App Developer",
-        "DevOps Engineer",
-        "QA Engineer",
-        "Cybersecurity Analyst",
-        "UI/UX Designer",
-        "Product Manager"
-    ],
-    "Data & Analytics": [
-        "Data Analyst",
-        "Junior Data Analyst",
-        "MIS Executive",
-        "MIS Analyst",
-        "Reporting Analyst",
-        "Research Analyst",
-        "Business Analyst",
-        "Business Intelligence Analyst",
-        "Data Engineer",
-        "Data Scientist",
-        "Machine Learning Engineer"
-    ],
-    "Customer Service & Support": [
-        "Customer Service Representative",
-        "Customer Support Representative",
-        "Customer Success Associate",
-        "Technical Support Representative",
-        "IT Help Desk Support",
-        "Call Center Agent",
-        "Chat Support Agent"
-    ],
-    "Administrative & Data Entry": [
-        "Data Entry Operator",
-        "Data Annotation Specialist",
-        "Virtual Assistant",
-        "Administrative Assistant",
-        "Executive Assistant",
-        "Receptionist",
-        "Back Office Executive",
-        "Office Administrator"
-    ],
-    "Sales": [
-        "Sales Development Representative (SDR)",
-        "Business Development Associate",
-        "Inside Sales Representative",
-        "Telesales Executive",
-        "Telecaller",
-        "Sales Executive",
-        "Field Sales Executive",
-        "Account Executive",
-        "Relationship Manager",
-        "Lead Generation Specialist"
-    ],
-    "Marketing": [
-        "Digital Marketing Specialist",
-        "Performance Marketing Specialist",
-        "SEO Specialist",
-        "Social Media Manager",
-        "Content Writer",
-        "Email Marketing Specialist",
-        "Marketing Executive"
-    ],
-    "Media & Creative": [
-        "Graphic Designer",
-        "Video Editor",
-        "Motion Graphics Designer",
-        "3D Artist",
-        "Animator",
-        "VFX Artist",
-        "Game Developer",
-        "Illustrator",
-        "Photographer",
-        "Copywriter",
-        "Technical Writer"
-    ],
-    "Finance, Banking & Insurance": [
-        "Financial Analyst",
-        "Accountant",
-        "Auditor",
-        "Bookkeeper",
-        "Credit Analyst",
-        "Risk Analyst",
-        "Compliance Analyst",
-        "Underwriter"
-    ],
-    "Business, HR & Legal": [
-        "Recruiter",
-        "HR Executive",
-        "Operations Manager",
-        "Project Manager",
-        "Program Manager",
-        "Management Consultant",
-        "Procurement Specialist",
-        "Paralegal",
-        "Corporate Counsel"
-    ],
-    "Engineering, Manufacturing & Construction": [
-        "Mechanical Engineer",
-        "Electrical Engineer",
-        "Civil Engineer",
-        "Quality Control Engineer",
-        "Production Planner",
-        "Maintenance Technician",
-        "Construction Project Manager",
-        "Site Safety Officer"
-    ],
-    "Supply Chain & Logistics": [
-        "Logistics Coordinator",
-        "Supply Chain Analyst",
-        "Warehouse Manager",
-        "Inventory Analyst",
-        "Procurement Executive",
-        "Fleet Manager"
-    ],
-    "Healthcare & Life Sciences": [
-        "Registered Nurse",
-        "Pharmacist",
-        "Medical Coder",
-        "Clinical Research Associate",
-        "Healthcare Administrator",
-        "Lab Technician"
-    ],
-    "Retail, Hospitality & Travel": [
-        "Store Manager",
-        "Retail Buyer",
-        "E-Commerce Operations Manager",
-        "Hotel Operations Manager",
-        "Restaurant Manager",
-        "Travel Consultant"
-    ],
-    "Education & Training": [
-        "Teacher",
-        "Online Tutor",
-        "Instructional Designer",
-        "Corporate Trainer",
-        "Curriculum Developer",
-        "Academic Counselor",
-        "Grant Writer"
-    ]
+  "IT & Software": [
+    "Software Engineer",
+    "Java Developer",
+    "Python Developer",
+    ".NET Developer",
+    "Full-Stack Developer",
+    "Frontend Developer",
+    "Backend Developer",
+    "Mobile App Developer",
+    "DevOps Engineer",
+    "QA Engineer",
+    "Cybersecurity Analyst",
+    "UI/UX Designer",
+    "Product Manager"
+  ],
+  "Data & Analytics": [
+    "Data Analyst",
+    "Junior Data Analyst",
+    "MIS Executive",
+    "MIS Analyst",
+    "Reporting Analyst",
+    "Research Analyst",
+    "Business Analyst",
+    "Business Intelligence Analyst",
+    "Data Engineer",
+    "Data Scientist",
+    "Machine Learning Engineer"
+  ],
+  "Customer Service & Support": [
+    "Customer Service Representative",
+    "Customer Support Representative",
+    "Customer Success Associate",
+    "Technical Support Representative",
+    "IT Help Desk Support",
+    "Call Center Agent",
+    "Chat Support Agent"
+  ],
+  "Administrative & Data Entry": [
+    "Data Entry Operator",
+    "Data Annotation Specialist",
+    "Virtual Assistant",
+    "Administrative Assistant",
+    "Executive Assistant",
+    "Receptionist",
+    "Back Office Executive",
+    "Office Administrator"
+  ],
+  "Sales": [
+    "Sales Development Representative (SDR)",
+    "Business Development Associate",
+    "Inside Sales Representative",
+    "Telesales Executive",
+    "Telecaller",
+    "Sales Executive",
+    "Field Sales Executive",
+    "Account Executive",
+    "Relationship Manager",
+    "Lead Generation Specialist"
+  ],
+  "Marketing": [
+    "Digital Marketing Specialist",
+    "Performance Marketing Specialist",
+    "SEO Specialist",
+    "Social Media Manager",
+    "Content Writer",
+    "Email Marketing Specialist",
+    "Marketing Executive"
+  ],
+  "Media & Creative": [
+    "Graphic Designer",
+    "Video Editor",
+    "Motion Graphics Designer",
+    "3D Artist",
+    "Animator",
+    "VFX Artist",
+    "Game Developer",
+    "Illustrator",
+    "Photographer",
+    "Copywriter",
+    "Technical Writer"
+  ],
+  "Finance, Banking & Insurance": [
+    "Financial Analyst",
+    "Accountant",
+    "Auditor",
+    "Bookkeeper",
+    "Credit Analyst",
+    "Risk Analyst",
+    "Compliance Analyst",
+    "Underwriter"
+  ],
+  "Business, HR & Legal": [
+    "Recruiter",
+    "HR Executive",
+    "Operations Manager",
+    "Project Manager",
+    "Program Manager",
+    "Management Consultant",
+    "Procurement Specialist",
+    "Paralegal",
+    "Corporate Counsel"
+  ],
+  "Engineering, Manufacturing & Construction": [
+    "Mechanical Engineer",
+    "Electrical Engineer",
+    "Civil Engineer",
+    "Quality Control Engineer",
+    "Production Planner",
+    "Maintenance Technician",
+    "Construction Project Manager",
+    "Site Safety Officer"
+  ],
+  "Supply Chain & Logistics": [
+    "Logistics Coordinator",
+    "Supply Chain Analyst",
+    "Warehouse Manager",
+    "Inventory Analyst",
+    "Procurement Executive",
+    "Fleet Manager"
+  ],
+  "Healthcare & Life Sciences": [
+    "Registered Nurse",
+    "Pharmacist",
+    "Medical Coder",
+    "Clinical Research Associate",
+    "Healthcare Administrator",
+    "Lab Technician"
+  ],
+  "Retail, Hospitality & Travel": [
+    "Store Manager",
+    "Retail Buyer",
+    "E-Commerce Operations Manager",
+    "Hotel Operations Manager",
+    "Restaurant Manager",
+    "Travel Consultant"
+  ],
+  "Education & Training": [
+    "Teacher",
+    "Online Tutor",
+    "Instructional Designer",
+    "Corporate Trainer",
+    "Curriculum Developer",
+    "Academic Counselor",
+    "Grant Writer"
+  ]
 };
 
-  const industrySelect = document.getElementById('industry');
-  const roleSelect = document.getElementById('roleType');
-  const roleChips = document.getElementById('roleChips');
-  const MAX_ROLES = 4;
-  let selectedRoles = [];
+  // Roles that are rarely advertised as remote: suggest the In person option for them.
+  const ONSITE_LEANING = new Set([
+    "Mechanical Engineer", "Electrical Engineer", "Civil Engineer", "Quality Control Engineer", "Production Planner",
+    "Maintenance Technician", "Construction Project Manager", "Site Safety Officer", "Logistics Coordinator",
+    "Warehouse Manager", "Fleet Manager", "Registered Nurse", "Pharmacist", "Lab Technician", "Store Manager",
+    "Retail Buyer", "Hotel Operations Manager", "Restaurant Manager", "Receptionist", "Teacher", "Photographer"
+  ]);
 
-  // Shows the roles of the chosen industry; roles already picked are greyed out.
+  const EXPERIENCE_LABELS = { "0-1": "Fresher", "1-3": "1 to 3 years", "3-5": "3 to 5 years", "5-8": "5 to 8 years", "8+": "8+ years" };
+  const SALARY_LABELS = { "0-3": "up to 3 LPA", "3-5": "3 to 5 LPA", "5-8": "5 to 8 LPA", "8-12": "8 to 12 LPA", "12-20": "12 to 20 LPA", "20+": "above 20 LPA" };
+
+  const $ = (id) => document.getElementById(id);
+  const form = $('jobForm');
+  const industrySelect = $('industry');
+  const roleSelect = $('roleType');
+  const rolePills = $('rolePills');
+  const rolesCounter = $('rolesCounter');
+  const workRemote = $('workRemote');
+  const workOnsite = $('workOnsite');
+  const workHint = $('workHint');
+  const countryField = $('countryField');
+  const cityField = $('cityField');
+  const countrySelect = $('country');
+  const citySelect = $('city');
+  const expSalaryRow = $('expSalaryRow');
+  const experienceSelect = $('experience');
+  const experienceHint = $('experienceHint');
+  const salaryField = $('salaryField');
+  const salarySelect = $('salary');
+  const resumeInput = $('resume');
+  const resumeConsent = $('resumeConsent');
+  const fileLabel = $('fileLabel');
+  const fileName = $('fileName');
+  const resumeHint = $('resumeHint');
+  const skillsInput = $('skills');
+  const skillPills = $('skillPills');
+  const emailInput = $('email');
+  const emailCheck = $('emailCheck');
+  const emailHint = $('emailHint');
+  const submitBtn = $('submitBtn');
+  const statusDiv = $('status');
+  const radarBadge = $('radarBadge');
+  const radarLabel = $('radarLabel');
+
+  let selectedRoles = [];
+  let badgeTimer = null;
+
+  const workType = () => (workOnsite.checked ? 'onsite' : 'remote');
+
+  // ===== ROLES: dropdown for the chosen industry, chosen roles shown as pills =====
   function renderRoleOptions() {
     const industry = industrySelect.value;
     roleSelect.innerHTML = '';
@@ -500,27 +640,30 @@
     });
   }
 
-  function renderRoleChips() {
-    roleChips.innerHTML = '';
+  function renderRolePills() {
+    rolePills.innerHTML = '';
     selectedRoles.forEach(role => {
-      const chip = document.createElement('span');
-      chip.className = 'chip';
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'pill';
+      pill.setAttribute('aria-label', 'Remove ' + role);
       const label = document.createElement('span');
       label.textContent = role;
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.textContent = '\u00d7';
-      remove.setAttribute('aria-label', 'Remove ' + role);
-      remove.addEventListener('click', () => {
+      const x = document.createElement('span');
+      x.className = 'remove-x';
+      x.setAttribute('aria-hidden', 'true');
+      x.textContent = '\u00d7';
+      pill.appendChild(label);
+      pill.appendChild(x);
+      pill.addEventListener('click', () => {
         selectedRoles = selectedRoles.filter(r => r !== role);
-        renderRoleChips();
+        renderRolePills();
         renderRoleOptions();
       });
-      chip.appendChild(label);
-      chip.appendChild(remove);
-      roleChips.appendChild(chip);
+      rolePills.appendChild(pill);
     });
     updateWorkHint();
+    rolesCounter.textContent = selectedRoles.length ? selectedRoles.length + ' of ' + MAX_ROLES + ' chosen' : 'choose up to ' + MAX_ROLES;
   }
 
   industrySelect.addEventListener('change', renderRoleOptions);
@@ -529,41 +672,87 @@
     const role = roleSelect.value;
     if (role && !selectedRoles.includes(role) && selectedRoles.length < MAX_ROLES) {
       selectedRoles.push(role);
-      renderRoleChips();
-      // Clear an earlier "choose a role" error now that a role is picked.
-      if (statusDiv.classList.contains('error')) {
-        statusDiv.textContent = '';
-        statusDiv.className = 'status';
-      }
+      renderRolePills();
+      clearError();
     }
     renderRoleOptions();
   });
 
-  // ===== WORK TYPE: remote shows Country, in person shows City =====
-  const workTypeSelect = document.getElementById('workType');
-  const countryField = document.getElementById('countryField');
-  const cityField = document.getElementById('cityField');
-  const countrySelect = document.getElementById('country');
-  const citySelect = document.getElementById('city');
-
-  const salaryField = document.getElementById('salaryField');
-  const salarySelect = document.getElementById('salary');
-  const experienceSelect = document.getElementById('experience');
-  const experienceHint = document.getElementById('experienceHint');
-  const workHint = document.getElementById('workHint');
-  const DEFAULT_EXPERIENCE_HINT = "Filled in from your resume if you upload one.";
-
-  // Roles that are rarely advertised as remote: suggest the In person option for them.
-  const ONSITE_LEANING = new Set([
-    "Mechanical Engineer", "Electrical Engineer", "Civil Engineer", "Quality Control Engineer", "Production Planner",
-    "Maintenance Technician", "Construction Project Manager", "Site Safety Officer", "Logistics Coordinator",
-    "Warehouse Manager", "Fleet Manager", "Registered Nurse", "Pharmacist", "Lab Technician", "Store Manager",
-    "Retail Buyer", "Hotel Operations Manager", "Restaurant Manager", "Receptionist", "Teacher", "Photographer"
-  ]);
-
+  // ===== WORK TYPE: Remote shows Country, In person shows City and Salary =====
+  // Suggest In person when a chosen role is rarely advertised as remote.
   function updateWorkHint() {
-    workHint.hidden = !(workTypeSelect.value === 'remote' && selectedRoles.some(r => ONSITE_LEANING.has(r)));
+    workHint.hidden = !(workType() === 'remote' && selectedRoles.some(r => ONSITE_LEANING.has(r)));
   }
+
+  function updateWorkType() {
+    const onsite = workType() === 'onsite';
+    cityField.hidden = !onsite;
+    countryField.hidden = onsite;
+    salaryField.hidden = !onsite;
+    expSalaryRow.classList.toggle('single', !onsite);
+    citySelect.required = onsite;
+    if (onsite) countrySelect.value = '';
+    else { citySelect.value = ''; salarySelect.value = ''; }
+    updateWorkHint();
+  }
+  workRemote.addEventListener('change', updateWorkType);
+  workOnsite.addEventListener('change', updateWorkType);
+
+  // ===== SKILLS: the text box is the source of truth, pills mirror it =====
+  function parseSkills() {
+    const seen = new Set();
+    return skillsInput.value.split(',').map(s => s.trim()).filter(s => {
+      const key = s.toLowerCase();
+      if (!s || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  function renderSkillPills() {
+    const skills = parseSkills();
+    skillPills.innerHTML = '';
+    skills.forEach(skill => {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'pill skill';
+      pill.setAttribute('aria-label', 'Remove ' + skill);
+      const label = document.createElement('span');
+      label.textContent = skill;
+      const x = document.createElement('span');
+      x.className = 'remove-x';
+      x.setAttribute('aria-hidden', 'true');
+      x.textContent = '\u00d7';
+      pill.appendChild(label);
+      pill.appendChild(x);
+      pill.addEventListener('click', () => {
+        skillsInput.value = parseSkills().filter(s => s.toLowerCase() !== skill.toLowerCase()).join(', ');
+        renderSkillPills();
+        skillsInput.focus();
+      });
+      skillPills.appendChild(pill);
+    });
+  }
+  skillsInput.addEventListener('input', renderSkillPills);
+
+  // ===== EMAIL =====
+  emailInput.addEventListener('input', () => {
+    emailHint.hidden = true;
+    emailCheck.classList.toggle('valid', emailInput.value.trim() !== '' && emailInput.validity.valid);
+  });
+
+  // ===== RESUME: consent first, then upload fills skills, experience and email =====
+  function updateResumeConsent() {
+    resumeInput.disabled = !resumeConsent.checked;
+    fileLabel.classList.toggle('disabled', !resumeConsent.checked);
+    if (!resumeConsent.checked && resumeInput.value) {
+      resumeInput.value = '';
+      fileName.textContent = 'No file chosen';
+      fileLabel.classList.remove('has-file');
+      resumeHint.textContent = DEFAULT_RESUME_HINT;
+    }
+  }
+  resumeConsent.addEventListener('change', updateResumeConsent);
 
   // Turns years of experience (estimated from the resume) into one of the dropdown's bands.
   function bandFromYears(years) {
@@ -574,81 +763,53 @@
     return '8+';
   }
 
-  function updateWorkType() {
-    const onsite = workTypeSelect.value === 'onsite';
-    cityField.hidden = !onsite;
-    countryField.hidden = onsite;
-    salaryField.hidden = !onsite;
-    citySelect.required = onsite;
-    if (onsite) countrySelect.value = '';
-    else { citySelect.value = ''; salarySelect.value = ''; }
-    updateWorkHint();
-  }
-  workTypeSelect.addEventListener('change', updateWorkType);
-
-  // ===== SUBMIT TO CLOUDFLARE WORKER =====
-  const WEBHOOK_URL = "https://job-radar-worker.jobradar-alerts-app.workers.dev";
-  const DEFAULT_RESUME_HINT = "Upload a PDF to fill in your skills.";
-
-  const form = document.getElementById('jobForm');
-  const statusDiv = document.getElementById('status');
-  const submitBtn = document.getElementById('submitBtn');
-  const resumeInput = document.getElementById('resume');
-
   // Reads a File object and resolves to just the base64 payload (no data: prefix)
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result; // "data:application/pdf;base64,XXXX..."
-        const base64 = result.split(",")[1];
-        resolve(base64);
-      };
-      reader.onerror = () => reject(new Error("Could not read the resume file."));
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = () => reject(new Error('Could not read the resume file.'));
       reader.readAsDataURL(file);
     });
   }
 
-  // ===== AUTO-FILL SKILLS FROM RESUME =====
-  const skillsInput = document.getElementById('skills');
-  const emailInput = document.getElementById('email');
-  const emailHint = document.getElementById('emailHint');
-  emailInput.addEventListener('input', () => { emailHint.hidden = true; });
-  const resumeHint = document.getElementById('resumeHint');
-
   resumeInput.addEventListener('change', async () => {
     const file = resumeInput.files[0];
     if (!file) {
+      fileName.textContent = 'No file chosen';
+      fileLabel.classList.remove('has-file');
       resumeHint.textContent = DEFAULT_RESUME_HINT;
       experienceHint.textContent = DEFAULT_EXPERIENCE_HINT;
       return;
     }
-
-    resumeHint.textContent = "Reading your resume...";
+    fileName.textContent = file.name;
+    fileLabel.classList.add('has-file');
+    resumeHint.textContent = 'Reading your resume...';
 
     try {
       const base64 = await fileToBase64(file);
-      const response = await fetch(WEBHOOK_URL + "/extract-skills", {
+      const response = await fetch(WEBHOOK_URL + '/extract-skills', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resumeBase64: base64 })
       });
-
       if (!response.ok) throw new Error('Extraction failed');
-
       const data = await response.json();
+
       // Fill in the email only if the person hasn't typed one already.
       if (data.email && !emailInput.value.trim()) {
         emailInput.value = data.email;
         emailHint.hidden = false;
+        emailCheck.classList.toggle('valid', emailInput.validity.valid);
       }
       if (typeof data.experienceYears === 'number') {
         experienceSelect.value = bandFromYears(data.experienceYears);
-        experienceHint.textContent = "Estimated from your resume. Please check it.";
+        experienceHint.textContent = 'Estimated from your resume. Please check it.';
       }
       if (data.skills && data.skills.length > 0) {
         skillsInput.value = data.skills.join(', ');
-        resumeHint.textContent = "Skills filled in. You can edit them.";
+        renderSkillPills();
+        resumeHint.textContent = 'Skills filled in. You can edit them.';
       } else {
         resumeHint.textContent = "No skills found. Please type them in.";
       }
@@ -657,33 +818,50 @@
     }
   });
 
+  // ===== SUBMIT TO CLOUDFLARE WORKER =====
+  function clearError() {
+    if (statusDiv.classList.contains('error')) {
+      statusDiv.textContent = '';
+      statusDiv.className = 'status';
+    }
+  }
+
+  function setBadge(state) {
+    clearTimeout(badgeTimer);
+    radarBadge.classList.toggle('scanning', state === 'scanning');
+    radarLabel.textContent = state === 'scanning' ? 'SCANNING' : state === 'sent' ? 'SENT' : 'FREE';
+    if (state === 'sent') badgeTimer = setTimeout(() => setBadge('idle'), 8000);
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     if (selectedRoles.length === 0) {
-      statusDiv.textContent = "Please choose at least one role.";
+      statusDiv.textContent = 'Please choose at least one role.';
       statusDiv.className = 'status error';
       roleSelect.focus();
       return;
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Sending...';
+    submitBtn.textContent = 'Searching...';
     statusDiv.textContent = '';
     statusDiv.className = 'status';
+    setBadge('scanning');
 
     try {
+      const onsite = workType() === 'onsite';
       const payload = {
         industry: industrySelect.value,
         roles: selectedRoles,
-        experience: experienceSelect.value,
-        salary: workTypeSelect.value === 'onsite' ? salarySelect.value : '',
         roleType: selectedRoles[0] || '',
-        workType: workTypeSelect.value,
-        city: workTypeSelect.value === 'onsite' ? citySelect.value : '',
-        country: workTypeSelect.value === 'remote' ? countrySelect.value : '',
-        skills: document.getElementById('skills').value,
-        email: document.getElementById('email').value,
+        workType: workType(),
+        city: onsite ? citySelect.value : '',
+        country: onsite ? '' : countrySelect.value,
+        experience: experienceSelect.value,
+        salary: onsite ? salarySelect.value : '',
+        skills: skillsInput.value,
+        email: emailInput.value,
         resumeFileName: null,
         resumeBase64: null
       };
@@ -699,29 +877,41 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      if (!response.ok) throw new Error('Request failed');
 
-      if (response.ok) {
-        statusDiv.textContent = "Done. Check your inbox shortly.";
-        statusDiv.className = 'status success';
-        form.reset();
-        selectedRoles = [];
-        renderRoleChips();
-        renderRoleOptions();
-        resumeHint.textContent = DEFAULT_RESUME_HINT;
-        experienceHint.textContent = DEFAULT_EXPERIENCE_HINT;
-        emailHint.hidden = true;
-        updateWorkType();
-      } else {
-        throw new Error('Request failed');
-      }
+      statusDiv.textContent = "Done. Your list is on its way. It can take a minute, and may land in spam the first time.";
+      statusDiv.className = 'status success';
+      setBadge('sent');
+
+      form.reset();
+      selectedRoles = [];
+      renderRolePills();
+      renderRoleOptions();
+      renderSkillPills();
+      resumeHint.textContent = DEFAULT_RESUME_HINT;
+      experienceHint.textContent = DEFAULT_EXPERIENCE_HINT;
+      fileName.textContent = 'No file chosen';
+      fileLabel.classList.remove('has-file');
+      emailHint.hidden = true;
+      emailCheck.classList.remove('valid');
+      updateResumeConsent();
+      updateWorkType();
     } catch (err) {
       statusDiv.textContent = "Something went wrong. Please try again.";
       statusDiv.className = 'status error';
+      setBadge('idle');
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Find my matches';
     }
   });
+
+  // ===== FIRST PAINT =====
+  // The browser can restore ticked boxes and chosen values when the page reloads, so sync everything once.
+  updateResumeConsent();
+  updateWorkType();
+  renderSkillPills();
+})();
 </script>
 </body>
 </html>
