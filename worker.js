@@ -41,6 +41,9 @@ const OPEN_LOCATION_WORDS = ["worldwide", "anywhere", "global", "remote", "inter
 const MAX_RESULTS = 10;
 const MAX_ROLES = 4;
 
+// How long the jobs we sent to someone are kept (only for people who ticked "remember").
+const HISTORY_DAYS = 60;
+
 // Job sources are cached for a few hours, so repeated searches reuse one answer instead of calling the
 // source every time (Remotive asks for very few calls a day, and Adzuna has daily limits).
 const SOURCE_CACHE_SECONDS = 10800;
@@ -100,6 +103,13 @@ export default {
     const origin = request.headers.get("Origin");
     const reply = (response) => corsResponse(response, origin);
 
+    // Pages opened from the links in an email (no CORS: they are normal web pages, not form calls).
+    const pagePath = new URL(request.url).pathname;
+    if (request.method === "GET" && pagePath === "/jobs") return historyPage(request, env);
+    if (pagePath === "/delete" && (request.method === "GET" || request.method === "POST")) {
+      return deletePage(request, env);
+    }
+
     // CORS preflight (form is hosted on GitHub Pages, a different origin)
     if (request.method === "OPTIONS") {
       return reply(new Response(null, { status: 204 }));
@@ -147,7 +157,10 @@ export default {
 
     try {
       const body = await request.json();
-      const { skills, email, resumeBase64 } = body;
+      const { skills, resumeBase64 } = body;
+      // Stray spaces around an address are harmless, so trim them instead of rejecting the request.
+      const email = typeof body.email === "string" ? body.email.trim() : body.email;
+      const remember = body.remember === true;
       const workType = body.workType === "onsite" ? "onsite" : "remote";
       const city = typeof body.city === "string" ? body.city : "";
       const country = typeof body.country === "string" ? body.country : "";
@@ -178,6 +191,21 @@ export default {
       const emailKey = await sha256Hex(String(email).trim().toLowerCase());
       if ((await overLimit(env, `rl:ip:${ip}:${day}`, 20)) || (await overLimit(env, `rl:email:${emailKey}:${day}`, 3))) {
         return reply(jsonResponse({ error: "Daily limit reached. Please try again tomorrow." }, 429));
+      }
+
+      // --- Saved history (only when the D1 database and HASH_SECRET are connected) ---
+      // person is a keyed hash of the email: the database never holds the address itself.
+      let history = null; // { person, holdsData, seen: Set }
+      if (env.DB && env.HASH_SECRET) {
+        try {
+          const person = await hmacHex(env.HASH_SECRET, "person:" + String(email).trim().toLowerCase());
+          if (remember) await purgeOldHistory(env);
+          const holdsData = await hasHistory(env, person);
+          history = { person, holdsData, seen: remember && holdsData ? await getSeenKeys(env, person) : new Set() };
+        } catch (err) {
+          console.error("History lookup failed (continuing without it):", err.message);
+          history = null;
+        }
       }
 
       // --- Step 1: optionally parse the resume via Gemini ---
@@ -254,7 +282,13 @@ export default {
       }
 
       // --- Step 3: score and pick the best matches ---
-      const scored = pickTopJobs(allJobs, allSkills, workType, searchRoles, { experience, salaryBand });
+      // Leave out jobs this person was already sent (only if they asked us to remember).
+      const seen = history ? history.seen : new Set();
+      const pool = seen.size > 0 ? allJobs.filter((j) => !seen.has(jobKey(j))) : allJobs;
+      const scored = pickTopJobs(pool, allSkills, workType, searchRoles, { experience, salaryBand });
+      // "Nothing new" means matches exist but every one was sent before.
+      const nothingNew =
+        scored.length === 0 && seen.size > 0 && pickTopJobs(allJobs, allSkills, workType, searchRoles, { experience, salaryBand }).length > 0;
 
       // One line per search showing how many jobs each source returned. It holds no email, skills or resume.
       console.log(
@@ -280,11 +314,25 @@ export default {
         experience,
       });
 
+      // Links to view or delete saved jobs appear whenever we hold data about this person
+      // (or are about to); otherwise the email says nothing was saved.
+      const extras = { nothingNew, onlyNew: seen.size > 0 };
+      if (history) {
+        if (remember || history.holdsData) {
+          const token = await hmacHex(env.HASH_SECRET, "access:" + history.person);
+          const base = new URL(request.url).origin;
+          extras.viewUrl = `${base}/jobs?p=${history.person}&t=${token}`;
+          extras.deleteUrl = `${base}/delete?p=${history.person}&t=${token}`;
+        } else {
+          extras.notSaved = true;
+        }
+      }
+
       if (scored.length === 0) {
         // Still email the person so they know it ran, just with no matches.
-        await sendEmail(env, email, [], resumeSummary, searchLabel, searchLinks);
+        await sendEmail(env, email, [], resumeSummary, searchLabel, searchLinks, extras);
         return reply(
-          jsonResponse({ ok: true, matches: 0, message: "No matching jobs found this run." })
+          jsonResponse({ ok: true, matches: 0, nothingNew, message: nothingNew ? "Nothing new since last time." : "No matching jobs found this run." })
         );
       }
 
@@ -292,7 +340,16 @@ export default {
       const withBlurbs = await addBlurbs(scored, allSkills, env.GEMINI_API_KEY);
 
       // --- Step 5: send email ---
-      await sendEmail(env, email, withBlurbs, resumeSummary, searchLabel, searchLinks);
+      await sendEmail(env, email, withBlurbs, resumeSummary, searchLabel, searchLinks, extras);
+
+      // Remember what was sent only after the email went out, so a failed send is never recorded.
+      if (history && remember) {
+        try {
+          await saveSentJobs(env, history.person, withBlurbs);
+        } catch (err) {
+          console.error("Saving history failed:", err.message);
+        }
+      }
 
       return reply(jsonResponse({ ok: true, matches: withBlurbs.length }));
     } catch (err) {
@@ -391,6 +448,171 @@ function formatSalary(job) {
 }
 
 // ---------- Daily limits (optional: needs a KV namespace bound as RATE_KV) ----------
+
+// ---------- Saved history (Cloudflare D1) ----------
+// Table to create once in the D1 console (see the setup steps):
+//   CREATE TABLE IF NOT EXISTS sent_jobs (person TEXT NOT NULL, job_key TEXT NOT NULL, title TEXT NOT NULL,
+//     company TEXT, location TEXT, salary TEXT, url TEXT, source TEXT, sent_at INTEGER NOT NULL,
+//     PRIMARY KEY (person, job_key));
+
+function toHex(buffer) {
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function hexToBytes(hex) {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return out;
+}
+
+function hmacKey(secret, usages) {
+  return crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, usages);
+}
+
+async function hmacHex(secret, message) {
+  const key = await hmacKey(secret, ["sign"]);
+  return toHex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)));
+}
+
+// A link is valid only if its token was made by this Worker's secret for exactly that person.
+async function accessAllowed(env, person, token) {
+  if (!env.DB || !env.HASH_SECRET) return false;
+  if (!/^[0-9a-f]{64}$/.test(person) || !/^[0-9a-f]{64}$/.test(token)) return false;
+  const key = await hmacKey(env.HASH_SECRET, ["verify"]);
+  return crypto.subtle.verify("HMAC", key, hexToBytes(token), new TextEncoder().encode("access:" + person));
+}
+
+// Anything older than the retention period counts as already gone, even before it is purged.
+function retentionCutoff() {
+  return Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000;
+}
+
+async function hasHistory(env, person) {
+  const row = await env.DB.prepare("SELECT 1 AS found FROM sent_jobs WHERE person = ? AND sent_at >= ? LIMIT 1")
+    .bind(person, retentionCutoff())
+    .first();
+  return Boolean(row);
+}
+
+async function getSeenKeys(env, person) {
+  const res = await env.DB.prepare("SELECT job_key FROM sent_jobs WHERE person = ? AND sent_at >= ?").bind(person, retentionCutoff()).all();
+  return new Set((res.results || []).map((r) => r.job_key));
+}
+
+async function saveSentJobs(env, person, jobs) {
+  const now = Date.now();
+  const statements = jobs.map((j) =>
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO sent_jobs (person, job_key, title, company, location, salary, url, source, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).bind(person, jobKey(j), j.title, j.company || "", j.location || "", formatSalary(j), j.url || "", j.source || "", now)
+  );
+  if (statements.length > 0) await env.DB.batch(statements);
+}
+
+async function purgeOldHistory(env) {
+  await env.DB.prepare("DELETE FROM sent_jobs WHERE sent_at < ?").bind(retentionCutoff()).run();
+}
+
+// ---------- The two pages opened from an email ----------
+
+function htmlPage(title, body, status = 200) {
+  const page = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer"><meta name="robots" content="noindex"><title>${escapeHtml(title)}</title>
+<style>
+  body{margin:0;padding:28px 14px 56px;background:#09090b;color:#e4e4e7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.6}
+  main{max-width:680px;margin:0 auto;padding:26px 22px;background:#121215;border:1px solid #222228;border-radius:18px}
+  h1{font-size:22px;margin:0 0 6px;color:#f4f4f5} h2{font-size:15px;margin:22px 0 8px;color:#8e8e99;font-weight:500}
+  a{color:#60a5fa} .muted{color:#8e8e99;font-size:14px} ul{padding-left:0;list-style:none;margin:0}
+  li{padding:10px 0;border-bottom:1px solid #222228} li:last-child{border-bottom:0} .meta{color:#8e8e99;font-size:13px}
+  button{font:inherit;font-weight:600;padding:12px 18px;border:0;border-radius:999px;background:#f87171;color:#09090b;cursor:pointer}
+  .cancel{margin-left:14px}
+</style></head><body><main>${body}</main></body></html>`;
+  return new Response(page, {
+    status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+      "X-Robots-Tag": "noindex",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'",
+    },
+  });
+}
+
+const BAD_LINK_PAGE = () =>
+  htmlPage("Link not valid", "<h1>This link isn't valid</h1><p class=\"muted\">It may be incomplete, or the saved jobs may have been deleted.</p>", 403);
+
+// Shows every job we sent this person, newest first.
+async function historyPage(request, env) {
+  const url = new URL(request.url);
+  const person = url.searchParams.get("p") || "";
+  const token = url.searchParams.get("t") || "";
+  if (!(await accessAllowed(env, person, token))) return BAD_LINK_PAGE();
+
+  const res = await env.DB.prepare(
+    "SELECT title, company, location, salary, url, source, sent_at FROM sent_jobs WHERE person = ? AND sent_at >= ? ORDER BY sent_at DESC, rowid DESC LIMIT 300"
+  )
+    .bind(person, retentionCutoff())
+    .all();
+  const rows = res.results || [];
+  const deleteLink = `/delete?p=${person}&t=${token}`;
+
+  if (rows.length === 0) {
+    return htmlPage("Your jobs", "<h1>No saved jobs</h1><p class=\"muted\">Nothing is saved for this email right now.</p>");
+  }
+
+  let html = `<h1>Jobs we sent you</h1><p class="muted">Kept for ${HISTORY_DAYS} days, then deleted automatically. Only you have this link, so please don't share it.</p>`;
+  let currentDay = "";
+  for (const r of rows) {
+    const day = new Date(r.sent_at).toISOString().slice(0, 10);
+    if (day !== currentDay) {
+      if (currentDay) html += "</ul>";
+      html += `<h2>Sent on ${escapeHtml(day)}</h2><ul>`;
+      currentDay = day;
+    }
+    const meta = [r.company, r.location, r.salary, r.source].filter(Boolean).map(escapeHtml).join(" &middot; ");
+    html += `<li><a href="${escapeHtml(safeUrl(r.url))}" rel="noreferrer">${escapeHtml(r.title)}</a><div class="meta">${meta}</div></li>`;
+  }
+  html += `</ul><h2>Your data</h2><p><a href="${escapeHtml(deleteLink)}">Delete everything saved about me</a></p>`;
+  return htmlPage("Your jobs", html);
+}
+
+// GET only asks for confirmation (email scanners open links on their own); POST does the deleting.
+async function deletePage(request, env) {
+  const url = new URL(request.url);
+  let person;
+  let token;
+  if (request.method === "POST") {
+    // The confirmation button posts from this same Worker, so the Origin must be this Worker.
+    if (request.headers.get("Origin") !== url.origin) return BAD_LINK_PAGE();
+    const form = await request.formData();
+    person = String(form.get("p") || "");
+    token = String(form.get("t") || "");
+  } else {
+    person = url.searchParams.get("p") || "";
+    token = url.searchParams.get("t") || "";
+  }
+  if (!(await accessAllowed(env, person, token))) return BAD_LINK_PAGE();
+
+  if (request.method === "POST") {
+    const res = await env.DB.prepare("DELETE FROM sent_jobs WHERE person = ?").bind(person).run();
+    const count = res?.meta?.changes ?? 0;
+    return htmlPage(
+      "Deleted",
+      `<h1>Deleted</h1><p>${count} saved job${count === 1 ? "" : "s"} removed. Job Radar now keeps nothing linked to your email, and the links in earlier emails no longer show anything.</p>`
+    );
+  }
+
+  return htmlPage(
+    "Delete my data",
+    `<h1>Delete everything saved about you?</h1><p class="muted">This removes the list of jobs we sent to your email. It can't be undone.</p>
+<form method="POST" action="/delete"><input type="hidden" name="p" value="${escapeHtml(person)}"><input type="hidden" name="t" value="${escapeHtml(token)}">
+<button type="submit">Yes, delete it</button><a class="cancel" href="/jobs?p=${escapeHtml(person)}&t=${escapeHtml(token)}">Cancel</a></form>`
+  );
+}
 
 async function sha256Hex(text) {
   const bytes = new TextEncoder().encode(text);
@@ -894,10 +1116,15 @@ function matchesCountry(job, country) {
   return words.some((w) => new RegExp(`(^|[^a-z])${escapeRegex(w)}([^a-z]|$)`).test(loc));
 }
 
+// The same job is recognised by its link, or by title and company when it has none.
+function jobKey(job) {
+  return (job.url || `${job.title}|${job.company}`).toLowerCase();
+}
+
 function dedupeJobs(jobs) {
   const seen = new Set();
   return jobs.filter((j) => {
-    const key = (j.url || `${j.title}|${j.company}`).toLowerCase();
+    const key = jobKey(j);
     if (!j.title || seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -1099,12 +1326,14 @@ function base64UrlEncode(str) {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function sendEmail(env, toEmail, jobs, resumeSummary, searchLabel, searchLinks = []) {
-  const html = buildEmailHtml(jobs, resumeSummary, searchLabel, searchLinks);
+async function sendEmail(env, toEmail, jobs, resumeSummary, searchLabel, searchLinks = [], extras = {}) {
+  const html = buildEmailHtml(jobs, resumeSummary, searchLabel, searchLinks, extras);
   const subject =
     jobs.length > 0
-      ? `Job Radar: ${jobs.length} matches for you`
-      : "Job Radar: no matches this run";
+      ? `Job Radar: ${jobs.length} ${extras.onlyNew ? "new " : ""}matches for you`
+      : extras.nothingNew
+        ? "Job Radar: nothing new this time"
+        : "Job Radar: no matches this run";
 
   const accessToken = await getGmailAccessToken(
     env.GMAIL_CLIENT_ID,
@@ -1178,7 +1407,20 @@ function buildSearchLinksHtml(searchLinks) {
     </div>`;
 }
 
-function buildEmailHtml(jobs, resumeSummary, searchLabel, searchLinks = []) {
+// Links to view or delete the saved jobs, or a line saying nothing was saved.
+function buildHistoryHtml(extras) {
+  if (extras.viewUrl && extras.deleteUrl) {
+    return `<p style="color:#666;font-size:12px;margin-top:16px;">Saved for ${HISTORY_DAYS} days so you don't get repeats:
+      <a href="${escapeHtml(extras.viewUrl)}" style="color:#2563eb;">View the jobs we've sent you</a> &middot;
+      <a href="${escapeHtml(extras.deleteUrl)}" style="color:#2563eb;">Delete my data</a></p>`;
+  }
+  if (extras.notSaved) {
+    return `<p style="color:#666;font-size:12px;margin-top:16px;">This search was not saved.</p>`;
+  }
+  return "";
+}
+
+function buildEmailHtml(jobs, resumeSummary, searchLabel, searchLinks = [], extras = {}) {
   const intro =
     (resumeSummary
       ? `<p style="color:#555;">Based on your resume: <em>${escapeHtml(resumeSummary)}</em></p>`
@@ -1189,8 +1431,13 @@ function buildEmailHtml(jobs, resumeSummary, searchLabel, searchLinks = []) {
     return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
       <h2>Job Radar</h2>
       ${intro}
-      <p>No matching jobs found this time. Try different skills, another role, or a wider salary range or experience level.</p>
+      ${
+        extras.nothingNew
+          ? "<p>Nothing new since your last search: every job that matches was already sent to you. Check back later, or open your saved list below.</p>"
+          : "<p>No matching jobs found this time. Try different skills, another role, or a wider salary range or experience level.</p>"
+      }
       ${buildSearchLinksHtml(searchLinks)}
+      ${buildHistoryHtml(extras)}
     </div>`;
   }
 
@@ -1219,8 +1466,10 @@ function buildEmailHtml(jobs, resumeSummary, searchLabel, searchLinks = []) {
   return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
     <h2>Job Radar: Your Matches</h2>
     ${intro}
+    ${extras.onlyNew ? `<p style="color:#555;">Showing only jobs we haven't sent you before.</p>` : ""}
     ${jobCards}
     ${buildSearchLinksHtml(searchLinks)}
+    ${buildHistoryHtml(extras)}
     <p style="color:#b45309;font-size:12px;margin-top:20px;">Stay safe: a real employer never charges you to apply or asks for bank details, OTPs or money to start work. Job Radar removes listings with obvious scam signs but cannot catch every one.</p>
     <p style="color:#999;font-size:12px;margin-top:12px;">Listings from: ${credits}. Sent automatically by Job Radar.</p>
   </div>`;

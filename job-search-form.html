@@ -401,6 +401,13 @@
         <p class="helper-note" id="emailHint" hidden>Found on your resume. Please check it.</p>
       </div>
 
+      <div class="field-group">
+        <label class="consent-label" for="remember">
+          <input type="checkbox" id="remember">
+          <span>Remember the jobs you send me, so I don't get repeats. I can view or delete them from any email. <a href="privacy-policy.html">Details</a></span>
+        </label>
+      </div>
+
       <button type="submit" class="cta-btn" id="submitBtn">Find my matches</button>
       <div class="status" id="status" role="status" aria-live="polite"></div>
 
@@ -606,6 +613,7 @@
   const emailInput = $('email');
   const emailCheck = $('emailCheck');
   const emailHint = $('emailHint');
+  const rememberBox = $('remember');
   const submitBtn = $('submitBtn');
   const statusDiv = $('status');
   const radarBadge = $('radarBadge');
@@ -862,6 +870,7 @@
         salary: onsite ? salarySelect.value : '',
         skills: skillsInput.value,
         email: emailInput.value,
+        remember: rememberBox.checked,
         resumeFileName: null,
         resumeBase64: null
       };
