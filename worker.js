@@ -129,6 +129,38 @@ export default {
     const ip = request.headers.get("CF-Connecting-IP") || "unknown";
     const day = new Date().toISOString().slice(0, 10);
 
+    // Lets someone ask for a fresh link to their saved jobs without searching again.
+    // The answer is the same whether or not anything is saved, so it can't be used to look up an address.
+    if (url.pathname === "/my-jobs-link") {
+      try {
+        const body = await request.json();
+        const email = typeof body.email === "string" ? body.email.trim() : "";
+        if (!isValidEmail(email)) {
+          return reply(jsonResponse({ error: "Please enter a valid email address." }, 400));
+        }
+        if (!env.DB || !env.HASH_SECRET) {
+          return reply(jsonResponse({ error: "Saved jobs are not switched on yet." }, 503));
+        }
+        const emailKey = await sha256Hex(email.toLowerCase());
+        if ((await overLimit(env, `rl:link-ip:${ip}:${day}`, 10)) || (await overLimit(env, `rl:link-email:${emailKey}:${day}`, 3))) {
+          return reply(jsonResponse({ error: "Daily limit reached. Please try again tomorrow." }, 429));
+        }
+        const person = await hmacHex(env.HASH_SECRET, "person:" + email.toLowerCase());
+        const holdsData = await hasHistory(env, person);
+        let links = null;
+        if (holdsData) {
+          const token = await hmacHex(env.HASH_SECRET, "access:" + person);
+          const base = new URL(request.url).origin;
+          links = { viewUrl: `${base}/jobs?p=${person}&t=${token}`, deleteUrl: `${base}/delete?p=${person}&t=${token}` };
+        }
+        await deliverEmail(env, email, "Job Radar: your saved jobs", buildLinkEmailHtml(links));
+        return reply(jsonResponse({ ok: true }));
+      } catch (err) {
+        console.error("my-jobs-link failed:", err.message);
+        return reply(jsonResponse({ error: "Something went wrong. Please try again." }, 500));
+      }
+    }
+
     // Lightweight endpoint: just read a resume, no job search/email.
     // Called by the form the moment a resume is selected, to auto-fill skills and experience.
     if (url.pathname === "/extract-skills") {
@@ -1335,6 +1367,11 @@ async function sendEmail(env, toEmail, jobs, resumeSummary, searchLabel, searchL
         ? "Job Radar: nothing new this time"
         : "Job Radar: no matches this run";
 
+  await deliverEmail(env, toEmail, subject, html);
+}
+
+// Sends one HTML email through the Gmail API.
+async function deliverEmail(env, toEmail, subject, html) {
   const accessToken = await getGmailAccessToken(
     env.GMAIL_CLIENT_ID,
     env.GMAIL_CLIENT_SECRET,
@@ -1407,13 +1444,36 @@ function buildSearchLinksHtml(searchLinks) {
     </div>`;
 }
 
-// Links to view or delete the saved jobs, or a line saying nothing was saved.
-function buildHistoryHtml(extras) {
-  if (extras.viewUrl && extras.deleteUrl) {
-    return `<p style="color:#666;font-size:12px;margin-top:16px;">Saved for ${HISTORY_DAYS} days so you don't get repeats:
-      <a href="${escapeHtml(extras.viewUrl)}" style="color:#2563eb;">View the jobs we've sent you</a> &middot;
-      <a href="${escapeHtml(extras.deleteUrl)}" style="color:#2563eb;">Delete my data</a></p>`;
+// The email sent when someone asks for a link to their saved jobs.
+function buildLinkEmailHtml(links) {
+  if (!links) {
+    return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
+      <h2>Job Radar</h2>
+      <p>Someone asked for the saved jobs for this email address, but nothing is saved. Job Radar only remembers jobs if you tick "Remember the jobs you send me" when you search.</p>
+      <p style="color:#666;font-size:12px;">If you didn't ask for this, you can ignore it.</p>
+    </div>`;
   }
+  return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
+    <h2>Job Radar</h2>
+    <p>Here are the links to your saved jobs.</p>
+    ${buildSavedBoxHtml(links)}
+    <p style="color:#666;font-size:12px;">If you didn't ask for this, you can ignore it. Please don't share this email: anyone with these links can use them.</p>
+  </div>`;
+}
+
+// A clearly visible box with two buttons to view or delete the saved jobs.
+function buildSavedBoxHtml(extras) {
+  if (!(extras.viewUrl && extras.deleteUrl)) return "";
+  return `<div style="margin:16px 0;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;">
+      <p style="margin:0 0 4px;font-weight:600;color:#1e3a8a;">Your saved jobs</p>
+      <p style="margin:0 0 12px;color:#334155;font-size:14px;">We keep the jobs we send you for ${HISTORY_DAYS} days, so you don't get repeats.</p>
+      <a href="${escapeHtml(extras.viewUrl)}" style="display:inline-block;padding:9px 16px;background:#2563eb;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">View my saved jobs</a>
+      <a href="${escapeHtml(extras.deleteUrl)}" style="display:inline-block;margin-left:8px;padding:8px 15px;border:1px solid #94a3b8;color:#334155;border-radius:6px;text-decoration:none;font-size:14px;">Delete my data</a>
+    </div>`;
+}
+
+// A line saying nothing was saved, for people who did not ask us to remember.
+function buildHistoryHtml(extras) {
   if (extras.notSaved) {
     return `<p style="color:#666;font-size:12px;margin-top:16px;">This search was not saved.</p>`;
   }
@@ -1431,6 +1491,7 @@ function buildEmailHtml(jobs, resumeSummary, searchLabel, searchLinks = [], extr
     return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
       <h2>Job Radar</h2>
       ${intro}
+      ${buildSavedBoxHtml(extras)}
       ${
         extras.nothingNew
           ? "<p>Nothing new since your last search: every job that matches was already sent to you. Check back later, or open your saved list below.</p>"
@@ -1466,6 +1527,7 @@ function buildEmailHtml(jobs, resumeSummary, searchLabel, searchLinks = [], extr
   return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
     <h2>Job Radar: Your Matches</h2>
     ${intro}
+    ${buildSavedBoxHtml(extras)}
     ${extras.onlyNew ? `<p style="color:#555;">Showing only jobs we haven't sent you before.</p>` : ""}
     ${jobCards}
     ${buildSearchLinksHtml(searchLinks)}

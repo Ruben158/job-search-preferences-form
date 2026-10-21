@@ -252,6 +252,31 @@
   .footer-links { margin-top: 14px; text-align: center; font-size: 0.78rem; color: var(--text-muted); }
   .footer-links a { color: var(--text-muted); }
 
+  /* ---------- Saved jobs (outside the main form so Enter never submits a search) ---------- */
+  .saved-jobs { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border-subtle); text-align: center; }
+  .link-btn { background: none; border: 0; padding: 6px; color: var(--pill-active-text); font: inherit; font-size: 0.88rem; text-decoration: underline; cursor: pointer; }
+  .saved-panel { margin-top: 10px; text-align: left; }
+  .saved-row { display: flex; gap: 8px; margin-top: 10px; }
+  .saved-row .dark-input { flex: 1; min-width: 0; }
+  .ghost-btn {
+    flex-shrink: 0;
+    min-height: 46px;
+    padding: 0 16px;
+    background: transparent;
+    border: 1px solid var(--pill-active-border);
+    border-radius: 12px;
+    color: var(--pill-active-text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .ghost-btn:disabled { opacity: 0.6; cursor: wait; }
+  .saved-status { min-height: 20px; margin-top: 10px; font-size: 0.85rem; }
+  .saved-status.success { color: var(--ok); }
+  .saved-status.error { color: var(--error); }
+  @media (max-width: 420px) { .saved-row { flex-direction: column; } }
+
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
   }
@@ -413,6 +438,18 @@
 
       <div class="footer-links"><a href="privacy-policy.html">Privacy policy</a></div>
     </form>
+
+    <div class="saved-jobs">
+      <button type="button" class="link-btn" id="savedToggle" aria-expanded="false" aria-controls="savedPanel">View or delete my saved jobs</button>
+      <div class="saved-panel" id="savedPanel" hidden>
+        <p class="helper-note">Enter your email and we'll send you a private link. It only works if you asked us to remember your jobs.</p>
+        <div class="saved-row">
+          <input type="email" class="dark-input" id="savedEmail" placeholder="you@example.com" autocomplete="email" aria-label="Email address for your saved jobs">
+          <button type="button" class="ghost-btn" id="savedSend">Email me the link</button>
+        </div>
+        <p class="saved-status" id="savedStatus" role="status" aria-live="polite"></p>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -914,6 +951,60 @@
       submitBtn.textContent = 'Find my matches';
     }
   });
+
+  // ===== VIEW OR DELETE SAVED JOBS: asks the Worker to email a private link =====
+  const savedToggle = $('savedToggle');
+  const savedPanel = $('savedPanel');
+  const savedEmail = $('savedEmail');
+  const savedSend = $('savedSend');
+  const savedStatus = $('savedStatus');
+
+  function setSavedStatus(text, kind) {
+    savedStatus.textContent = text;
+    savedStatus.className = 'saved-status' + (kind ? ' ' + kind : '');
+  }
+
+  savedToggle.addEventListener('click', () => {
+    const open = savedPanel.hidden;
+    savedPanel.hidden = !open;
+    savedToggle.setAttribute('aria-expanded', String(open));
+    if (open) savedEmail.focus();
+  });
+
+  async function sendSavedLink() {
+    const address = savedEmail.value.trim();
+    if (!address || !savedEmail.validity.valid) {
+      setSavedStatus('Please enter a valid email address.', 'error');
+      savedEmail.focus();
+      return;
+    }
+    savedSend.disabled = true;
+    savedSend.textContent = 'Sending...';
+    setSavedStatus('', '');
+    try {
+      const response = await fetch(WEBHOOK_URL + '/my-jobs-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: address })
+      });
+      if (response.status === 429) throw new Error('limit');
+      if (response.status === 503) throw new Error('off');
+      if (!response.ok) throw new Error('failed');
+      setSavedStatus("Done. We've emailed that address. It can take a minute, and may land in spam the first time.", 'success');
+    } catch (err) {
+      setSavedStatus(
+        err.message === 'limit' ? 'Too many requests today. Please try again tomorrow.'
+        : err.message === 'off' ? "Saved jobs aren't switched on yet."
+        : 'Something went wrong. Please try again.',
+        'error'
+      );
+    } finally {
+      savedSend.disabled = false;
+      savedSend.textContent = 'Email me the link';
+    }
+  }
+  savedSend.addEventListener('click', sendSavedLink);
+  savedEmail.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); sendSavedLink(); } });
 
   // ===== FIRST PAINT =====
   // The browser can restore ticked boxes and chosen values when the page reloads, so sync everything once.
