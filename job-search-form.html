@@ -213,6 +213,11 @@
   .seg-option input:checked + span { background: var(--pill-active-bg); border-color: var(--pill-active-border); color: var(--pill-active-text); }
   .seg-option input:focus-visible + span { outline: 2px solid var(--pill-active-text); outline-offset: 2px; }
 
+  .pill.exclude { background: #2a1215; border-color: #7f1d1d; color: #fca5a5; font-weight: 400; }
+  .filters-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 6px 0; text-align: left; }
+  .filters-panel { margin-top: 10px; padding: 14px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; }
+  .filters-panel .field-group:last-child { margin-bottom: 0; }
+
   .conditional-reveal { animation: fadeSlideIn 0.2s ease-out; }
   @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -344,6 +349,7 @@
         <select class="dark-select" id="roleType" disabled>
           <option value="">Select an industry first</option>
         </select>
+        <p class="helper-note" id="rolesHint" hidden>Suggested from your resume. Change them if they're not right.</p>
       </div>
 
       <div class="field-group">
@@ -368,6 +374,7 @@
           <option value="Singapore">Singapore</option>
           <option value="United Arab Emirates">United Arab Emirates</option>
         </select>
+        <p class="helper-note" id="regionNote" hidden>We leave out jobs that say they're only for residents or citizens of another country, such as "US citizens only".</p>
       </div>
 
       <div class="field-group" id="cityField" hidden>
@@ -415,6 +422,22 @@
         </div>
         <div class="pill-row" id="skillPills"></div>
         <input type="text" class="dark-input" id="skills" placeholder="e.g. python, sql, power bi" autocomplete="off" required>
+      </div>
+
+      <div class="field-group">
+        <button type="button" class="link-btn filters-toggle" id="filtersToggle" aria-expanded="false" aria-controls="filtersPanel">More filters</button>
+        <div class="filters-panel" id="filtersPanel" hidden>
+          <div class="field-group">
+            <div class="field-header">
+              <label class="field-label" for="exclude">Leave out keywords or companies</label>
+              <span class="field-meta">Separate with commas</span>
+            </div>
+            <div class="pill-row" id="excludePills"></div>
+            <input type="text" class="dark-input" id="exclude" placeholder="e.g. php, intern, company name" autocomplete="off">
+            <p class="helper-note">We check job titles and company names only.</p>
+            <p class="helper-note warn" id="excludeWarn" hidden></p>
+          </div>
+        </div>
       </div>
 
       <div class="field-group">
@@ -651,6 +674,13 @@
   const emailCheck = $('emailCheck');
   const emailHint = $('emailHint');
   const rememberBox = $('remember');
+  const rolesHint = $('rolesHint');
+  const regionNote = $('regionNote');
+  const filtersToggle = $('filtersToggle');
+  const filtersPanel = $('filtersPanel');
+  const excludeInput = $('exclude');
+  const excludePills = $('excludePills');
+  const excludeWarn = $('excludeWarn');
   const submitBtn = $('submitBtn');
   const statusDiv = $('status');
   const radarBadge = $('radarBadge');
@@ -701,6 +731,7 @@
       pill.appendChild(label);
       pill.appendChild(x);
       pill.addEventListener('click', () => {
+        rolesHint.hidden = true;
         selectedRoles = selectedRoles.filter(r => r !== role);
         renderRolePills();
         renderRoleOptions();
@@ -708,14 +739,16 @@
       rolePills.appendChild(pill);
     });
     updateWorkHint();
+    checkConflicts();
     rolesCounter.textContent = selectedRoles.length ? selectedRoles.length + ' of ' + MAX_ROLES + ' chosen' : 'choose up to ' + MAX_ROLES;
   }
 
-  industrySelect.addEventListener('change', renderRoleOptions);
+  industrySelect.addEventListener('change', () => { rolesHint.hidden = true; renderRoleOptions(); });
 
   roleSelect.addEventListener('change', () => {
     const role = roleSelect.value;
     if (role && !selectedRoles.includes(role) && selectedRoles.length < MAX_ROLES) {
+      rolesHint.hidden = true;
       selectedRoles.push(role);
       renderRolePills();
       clearError();
@@ -778,13 +811,84 @@
       skillPills.appendChild(pill);
     });
   }
-  skillsInput.addEventListener('input', renderSkillPills);
+  skillsInput.addEventListener('input', () => { renderSkillPills(); checkConflicts(); });
 
   // ===== EMAIL =====
   emailInput.addEventListener('input', () => {
     emailHint.hidden = true;
     emailCheck.classList.toggle('valid', emailInput.value.trim() !== '' && emailInput.validity.valid);
   });
+
+  // ===== MORE FILTERS: words or companies to leave out =====
+  function parseTerms(text) {
+    const seen = new Set();
+    return text.split(',').map(s => s.trim()).filter(s => {
+      const key = s.toLowerCase();
+      if (s.length < 2 || s.length > 40 || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 20);
+  }
+
+  function renderExcludePills() {
+    const terms = parseTerms(excludeInput.value);
+    excludePills.innerHTML = '';
+    terms.forEach(term => {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'pill exclude';
+      pill.setAttribute('aria-label', 'Remove ' + term);
+      const label = document.createElement('span');
+      label.textContent = term;
+      const x = document.createElement('span');
+      x.className = 'remove-x';
+      x.setAttribute('aria-hidden', 'true');
+      x.textContent = '\u00d7';
+      pill.appendChild(label);
+      pill.appendChild(x);
+      pill.addEventListener('click', () => {
+        excludeInput.value = parseTerms(excludeInput.value).filter(t => t.toLowerCase() !== term.toLowerCase()).join(', ');
+        renderExcludePills();
+        checkConflicts();
+        excludeInput.focus();
+      });
+      excludePills.appendChild(pill);
+    });
+    filtersToggle.textContent = terms.length ? 'More filters (' + terms.length + ')' : 'More filters';
+  }
+
+  // Warns when a word to leave out is also a skill, or would hide a role the person chose.
+  function checkConflicts() {
+    const terms = parseTerms(excludeInput.value).map(t => t.toLowerCase());
+    const skills = parseSkills().map(s => s.toLowerCase());
+    const clashes = [];
+    terms.forEach(term => {
+      const wordPattern = new RegExp('(^|[^a-z0-9])' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)', 'i');
+      if (skills.includes(term)) clashes.push('"' + term + '" is also in your skills.');
+      else if (selectedRoles.some(r => wordPattern.test(r))) clashes.push('"' + term + '" is part of a role you chose, so it would hide those jobs.');
+    });
+    excludeWarn.hidden = clashes.length === 0;
+    excludeWarn.textContent = clashes.slice(0, 2).join(' ');
+  }
+
+  excludeInput.addEventListener('input', () => { renderExcludePills(); checkConflicts(); });
+  // Enter adds a separator instead of sending the form by accident.
+  excludeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (excludeInput.value.trim() && !excludeInput.value.trim().endsWith(',')) excludeInput.value = excludeInput.value.trim() + ', ';
+      renderExcludePills();
+    }
+  });
+
+  filtersToggle.addEventListener('click', () => {
+    const open = filtersPanel.hidden;
+    filtersPanel.hidden = !open;
+    filtersToggle.setAttribute('aria-expanded', String(open));
+    if (open) excludeInput.focus();
+  });
+
+  countrySelect.addEventListener('change', () => { regionNote.hidden = !countrySelect.value; });
 
   // ===== RESUME: consent first, then upload fills skills, experience and email =====
   function updateResumeConsent() {
@@ -836,10 +940,22 @@
       const response = await fetch(WEBHOOK_URL + '/extract-skills', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resumeBase64: base64 })
+        body: JSON.stringify({ resumeBase64: base64, catalog: roleOptions })
       });
       if (!response.ok) throw new Error('Extraction failed');
       const data = await response.json();
+
+      // Suggest an industry and roles, but only if the person hasn't chosen any yet.
+      if (data.suggestedIndustry && roleOptions[data.suggestedIndustry] && selectedRoles.length === 0 && !industrySelect.value) {
+        const roles = (data.suggestedRoles || []).filter(r => roleOptions[data.suggestedIndustry].includes(r)).slice(0, MAX_ROLES);
+        if (roles.length > 0) {
+          industrySelect.value = data.suggestedIndustry;
+          selectedRoles = roles;
+          renderRoleOptions();
+          renderRolePills();
+          rolesHint.hidden = false;
+        }
+      }
 
       // Fill in the email only if the person hasn't typed one already.
       if (data.email && !emailInput.value.trim()) {
@@ -908,6 +1024,7 @@
         skills: skillsInput.value,
         email: emailInput.value,
         remember: rememberBox.checked,
+        exclude: parseTerms(excludeInput.value),
         resumeFileName: null,
         resumeBase64: null
       };
@@ -940,6 +1057,10 @@
       fileLabel.classList.remove('has-file');
       emailHint.hidden = true;
       emailCheck.classList.remove('valid');
+      rolesHint.hidden = true;
+      regionNote.hidden = true;
+      renderExcludePills();
+      checkConflicts();
       updateResumeConsent();
       updateWorkType();
     } catch (err) {

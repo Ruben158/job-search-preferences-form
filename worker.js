@@ -138,7 +138,9 @@ export default {
         if (!isValidEmail(email)) {
           return reply(jsonResponse({ error: "Please enter a valid email address." }, 400));
         }
-        if (!env.DB || !env.HASH_SECRET) {
+        const offReason = savedJobsOffReason(env);
+        if (offReason) {
+          console.error("Saved jobs are off: " + offReason);
           return reply(jsonResponse({ error: "Saved jobs are not switched on yet." }, 503));
         }
         const emailKey = await sha256Hex(email.toLowerCase());
@@ -168,17 +170,20 @@ export default {
         if (await overLimit(env, `rl:skills:${ip}:${day}`, 30)) {
           return reply(jsonResponse({ error: "Daily limit reached. Please try again tomorrow." }, 429));
         }
-        const { resumeBase64 } = await request.json();
+        const body = await request.json();
+        const { resumeBase64 } = body;
         if (!resumeBase64) {
           return reply(jsonResponse({ error: "Missing resumeBase64." }, 400));
         }
-        const parsed = await extractResumeInfo(resumeBase64, env.GEMINI_API_KEY);
+        const catalog = sanitizeCatalog(body.catalog);
+        const parsed = await extractResumeInfo(resumeBase64, env.GEMINI_API_KEY, catalog);
         return reply(
           jsonResponse({
             ok: true,
             skills: parsed.skills || [],
             experienceYears: toYears(parsed.yearsOfExperience),
             email: cleanEmail(parsed.email),
+            ...validateSuggestions(parsed, catalog),
           })
         );
       } catch (err) {
@@ -193,6 +198,7 @@ export default {
       // Stray spaces around an address are harmless, so trim them instead of rejecting the request.
       const email = typeof body.email === "string" ? body.email.trim() : body.email;
       const remember = body.remember === true;
+      const excludeTerms = sanitizeExclude(body.exclude);
       const workType = body.workType === "onsite" ? "onsite" : "remote";
       const city = typeof body.city === "string" ? body.city : "";
       const country = typeof body.country === "string" ? body.country : "";
@@ -228,7 +234,9 @@ export default {
       // --- Saved history (only when the D1 database and HASH_SECRET are connected) ---
       // person is a keyed hash of the email: the database never holds the address itself.
       let history = null; // { person, holdsData, seen: Set }
-      if (env.DB && env.HASH_SECRET) {
+      const offReason = savedJobsOffReason(env);
+      if (offReason && remember) console.error("Saved jobs are off, so this search was not remembered: " + offReason);
+      if (!offReason) {
         try {
           const person = await hmacHex(env.HASH_SECRET, "person:" + String(email).trim().toLowerCase());
           if (remember) await purgeOldHistory(env);
@@ -302,16 +310,25 @@ export default {
           (roleText ? ` for ${roleText}` : "");
       }
       if (experience) searchLabel += `, ranked for ${EXPERIENCE_BANDS[experience].label} experience`;
+      if (excludeTerms.length > 0) searchLabel += `, leaving out ${excludeTerms.join(", ")}`;
 
       allJobs = dedupeJobs(allJobs);
 
-      // Drop listings that look like scams (fee demands, WhatsApp-only contact, "earn per day" promises).
+      // Remote searches: drop listings that say they are only for residents or citizens of another region.
       const afterCountryFilter = allJobs.length;
+      if (workType === "remote") allJobs = dropRegionRestricted(allJobs, country).kept;
+      const afterRegionFilter = allJobs.length;
+
+      // Drop listings that look like scams (fee demands, WhatsApp-only contact, "earn per day" promises).
       const { kept, blocked } = removeScams(allJobs);
       allJobs = kept;
       if (blocked.length > 0) {
         console.log(`Blocked ${blocked.length} suspected scam listing(s):`, JSON.stringify(blocked.slice(0, 20)));
       }
+      const afterScamFilter = allJobs.length;
+
+      // Drop titles and companies the person asked us to leave out.
+      allJobs = applyExclusions(allJobs, excludeTerms).kept;
 
       // --- Step 3: score and pick the best matches ---
       // Leave out jobs this person was already sent (only if they asked us to remember).
@@ -332,7 +349,9 @@ export default {
           city,
           fetchedBySource,
           afterCountryFilter,
-          afterScamFilter: allJobs.length,
+          afterRegionFilter,
+          afterScamFilter,
+          afterExclusions: allJobs.length,
           emailed: scored.length,
         })
       );
@@ -369,7 +388,10 @@ export default {
       }
 
       // --- Step 4: personalized blurbs per job via Gemini ---
-      const withBlurbs = await addBlurbs(scored, allSkills, env.GEMINI_API_KEY);
+      const withBlurbs = await addBlurbs(scored, allSkills, env.GEMINI_API_KEY, {
+        experienceLabel: experience ? EXPERIENCE_BANDS[experience].label : "",
+        roles: searchRoles.filter(Boolean),
+      });
 
       // --- Step 5: send email ---
       await sendEmail(env, email, withBlurbs, resumeSummary, searchLabel, searchLinks, extras);
@@ -510,7 +532,7 @@ async function hmacHex(secret, message) {
 
 // A link is valid only if its token was made by this Worker's secret for exactly that person.
 async function accessAllowed(env, person, token) {
-  if (!env.DB || !env.HASH_SECRET) return false;
+  if (savedJobsOffReason(env)) return false;
   if (!/^[0-9a-f]{64}$/.test(person) || !/^[0-9a-f]{64}$/.test(token)) return false;
   const key = await hmacKey(env.HASH_SECRET, ["verify"]);
   return crypto.subtle.verify("HMAC", key, hexToBytes(token), new TextEncoder().encode("access:" + person));
@@ -766,9 +788,150 @@ async function fetchWithRetry(url, options, maxAttempts = 3) {
   return lastRes; // still 503 after retries — caller handles the error
 }
 
+// ---------- Role suggestions from the resume ----------
+// The form sends its own industry and role lists, so the Worker never has a second copy that could drift.
+
+const MAX_CATALOG_INDUSTRIES = 30;
+const MAX_CATALOG_ROLES = 40;
+const MAX_NAME_LENGTH = 80;
+
+function cleanName(value) {
+  return typeof value === "string" && !/[\u0000-\u001f]/.test(value) ? value.trim() : "";
+}
+
+// Accepts { "Industry": ["Role", ...] } and drops anything malformed or oversized.
+function sanitizeCatalog(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out = {};
+  for (const [rawName, rawRoles] of Object.entries(raw)) {
+    if (Object.keys(out).length >= MAX_CATALOG_INDUSTRIES) break;
+    const name = cleanName(rawName);
+    if (!name || name.length > MAX_NAME_LENGTH || !Array.isArray(rawRoles)) continue;
+    const roles = rawRoles
+      .map(cleanName)
+      .filter((r) => r && r.length <= MAX_NAME_LENGTH)
+      .slice(0, MAX_CATALOG_ROLES);
+    if (roles.length > 0) out[name] = roles;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+function suggestionInstructions(catalog) {
+  return (
+    "suggestedIndustry is the one industry from the list below that best fits the career this resume points to, " +
+    "and suggestedRoles are up to 4 roles from THAT industry's list that the candidate is best suited for. " +
+    "Copy the industry and role names exactly as written in the list. Use null and [] if nothing fits. " +
+    "The list (industry: roles): " +
+    JSON.stringify(catalog)
+  );
+}
+
+// Keeps only suggestions that exactly match the lists the form sent, so a made-up name can never get through.
+function validateSuggestions(parsed, catalog) {
+  const empty = { suggestedIndustry: null, suggestedRoles: [] };
+  if (!catalog || !parsed) return empty;
+  const industry = typeof parsed.suggestedIndustry === "string" ? parsed.suggestedIndustry.trim() : "";
+  if (!hasKey(catalog, industry)) return empty;
+  const allowed = new Set(catalog[industry]);
+  const roles = Array.isArray(parsed.suggestedRoles)
+    ? Array.from(new Set(parsed.suggestedRoles.filter((r) => typeof r === "string" && allowed.has(r.trim())).map((r) => r.trim())))
+    : [];
+  return roles.length > 0 ? { suggestedIndustry: industry, suggestedRoles: roles.slice(0, MAX_ROLES) } : empty;
+}
+
+// ---------- Words or companies the person does not want ----------
+
+const MAX_EXCLUDE_TERMS = 20;
+const MAX_EXCLUDE_LENGTH = 40;
+
+function sanitizeExclude(raw) {
+  if (!Array.isArray(raw)) return [];
+  const terms = raw
+    .map((t) => (typeof t === "string" && !/[\u0000-\u001f]/.test(t) ? t.trim().toLowerCase() : ""))
+    .filter((t) => t.length >= 2 && t.length <= MAX_EXCLUDE_LENGTH);
+  return Array.from(new Set(terms)).slice(0, MAX_EXCLUDE_TERMS);
+}
+
+// Matches a whole word or phrase, so "php" never matches "phpstorm" and "ai" never matches "mail".
+function termRegex(term) {
+  return new RegExp(`(?<![a-z0-9])${escapeRegex(term)}(?![a-z0-9])`, "i");
+}
+
+// Only titles and company names are checked: a description that says "no PHP needed" must not hide a job.
+function applyExclusions(jobs, terms) {
+  if (terms.length === 0) return { kept: jobs, removed: 0 };
+  const patterns = terms.map(termRegex);
+  const kept = jobs.filter((j) => !patterns.some((rx) => rx.test(j.title) || rx.test(j.company)));
+  return { kept, removed: jobs.length - kept.length };
+}
+
+// ---------- Listings only for residents or citizens of another region ----------
+// Only wording that names a region counts. A bare "no visa sponsorship" is too ambiguous: plenty of
+// worldwide remote employers write it about relocation.
+
+const joinPatterns = (...parts) => new RegExp(parts.map((p) => p.source).join("|"), "gi");
+
+const REGION_RESTRICTIONS = [
+  {
+    local: ["United States"],
+    pattern: joinPatterns(
+      /\bu\.?s\.?\s+citizens?(?:hip)?\s+(?:only|required)\b/,
+      /\b(?:must|need to|required to)\s+be\s+(?:a\s+)?u\.?s\.?\s+citizens?\b/,
+      /\bauthori[sz]ed\s+to\s+work\s+in\s+the\s+(?:u\.?s\.?a?\.?|united\s+states)\b/,
+      /\bmust\s+(?:reside|live|be\s+(?:located|based))\s+in\s+the\s+(?:u\.?s\.?a?\.?|united\s+states)\b/,
+      /\bu\.?s\.?[- ]based\s+(?:candidates?\s+)?only\b/,
+      /\bgreen\s+card\s+(?:holders?\s+)?only\b/,
+      /\bw-?2\s+only\b/
+    ),
+  },
+  {
+    local: ["United Kingdom"],
+    pattern: joinPatterns(
+      /\bright\s+to\s+work\s+in\s+the\s+(?:uk|united\s+kingdom)\b/,
+      /\buk\s+(?:residents?|citizens?)\s+only\b/,
+      /\bmust\s+(?:reside|live|be\s+(?:located|based))\s+in\s+the\s+(?:uk|united\s+kingdom)\b/
+    ),
+  },
+  {
+    local: ["Germany"],
+    pattern: joinPatterns(
+      /\bmust\s+(?:reside|live|be\s+(?:located|based))\s+in\s+(?:the\s+)?(?:eu|european\s+union|europe)\b/,
+      /\b(?:eu|european)\s+(?:work\s+)?authori[sz]ation\b/,
+      /\b(?:eu|european)\s+(?:citizens?|residents?)\s+only\b/
+    ),
+  },
+  {
+    local: ["Canada"],
+    pattern: joinPatterns(
+      /\bauthori[sz]ed\s+to\s+work\s+in\s+canada\b/,
+      /\bmust\s+(?:reside|live|be\s+(?:located|based))\s+in\s+canada\b/,
+      /\bcanadian\s+(?:citizens?|residents?)\s+only\b/
+    ),
+  },
+  {
+    local: ["Australia"],
+    pattern: joinPatterns(
+      /\bauthori[sz]ed\s+to\s+work\s+in\s+australia\b/,
+      /\bmust\s+(?:reside|live|be\s+(?:located|based))\s+in\s+australia\b/,
+      /\baustralian\s+(?:citizens?|residents?)\s+only\b/
+    ),
+  },
+];
+
+// Drops listings that say they are only for another region. Does nothing when no country was chosen.
+function dropRegionRestricted(jobs, country) {
+  if (!country) return { kept: jobs, removed: 0 };
+  const rules = REGION_RESTRICTIONS.filter((r) => !r.local.includes(country));
+  const kept = jobs.filter((j) => {
+    const text = `${j.title} ${j.description}`;
+    return !rules.some((r) => hasScamMatch(text, r.pattern));
+  });
+  return { kept, removed: jobs.length - kept.length };
+}
+
 // ---------- Resume parsing (Gemini reads the PDF directly) ----------
 
-async function extractResumeInfo(resumeBase64, apiKey) {
+async function extractResumeInfo(resumeBase64, apiKey, catalog = null) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
 
   const res = await fetchWithRetry(url, {
@@ -788,11 +951,12 @@ async function extractResumeInfo(resumeBase64, apiKey) {
             {
               text:
                 "Read this resume. Respond with ONLY a JSON object, no preamble, no markdown fences, in exactly this shape:\n" +
-                '{"skills": ["skill1", "skill2", ...], "summary": "one sentence summary of the candidate\'s background", "yearsOfExperience": 3, "email": "name@example.com"}\n' +
+                '{"skills": ["skill1", "skill2", ...], "summary": "one sentence summary of the candidate\'s background", "yearsOfExperience": 3, "email": "name@example.com"' + (catalog ? ', "suggestedIndustry": "Industry name", "suggestedRoles": ["Role name"]' : "") + '}\n' +
                 "List 10-20 concrete skills/technologies/competencies (not soft skills like 'teamwork'). " +
                 "yearsOfExperience is the total years of full-time professional work experience, as a number " +
                 "(use 0 for students, freshers and interns, and null if you cannot tell). " +
-                "email is the candidate\'s own email address copied exactly as written on the resume, or null if the resume has none.",
+                "email is the candidate\'s own email address copied exactly as written on the resume, or null if the resume has none." +
+                (catalog ? " " + suggestionInstructions(catalog) : ""),
             },
           ],
         },
@@ -815,8 +979,9 @@ async function extractResumeInfo(resumeBase64, apiKey) {
 
 // ---------- Job blurbs ----------
 
-async function addBlurbs(jobs, skills, apiKey) {
+async function addBlurbs(jobs, skills, apiKey, context = {}) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+  const sent = jobs.map((j) => ({ id: j.id, title: j.title, company: j.company, description: j.description?.slice(0, 400) }));
 
   const res = await fetchWithRetry(url, {
     method: "POST",
@@ -828,12 +993,16 @@ async function addBlurbs(jobs, skills, apiKey) {
           parts: [
             {
               text:
-                `Candidate skills: ${skills.join(", ")}\n\n` +
-                `Jobs (JSON array):\n${JSON.stringify(
-                  jobs.map((j) => ({ id: j.id, title: j.title, company: j.company, description: j.description?.slice(0, 400) }))
-                )}\n\n` +
-                "For each job, write a 1-sentence personalized blurb explaining why it fits the candidate's skills. " +
-                'Respond with ONLY a JSON object mapping job id to blurb, no preamble, no markdown fences: {"id1": "blurb", "id2": "blurb"}',
+                `Candidate skills: ${skills.join(", ")}\n` +
+                (context.experienceLabel ? `Candidate experience: ${context.experienceLabel}\n` : "") +
+                (context.roles && context.roles.length ? `Roles wanted: ${context.roles.join(", ")}\n` : "") +
+                `\nJobs (JSON array):\n${JSON.stringify(sent)}\n\n` +
+                "For each job give three things. " +
+                '"note": one sentence on why it fits the candidate\'s skills. ' +
+                '"fit": a whole number from 1 (poor) to 5 (excellent), based ONLY on how well the candidate\'s skills and experience match the role and the listing text. ' +
+                "Do not guess about pay or whether the employer is trustworthy. " +
+                '"gap": the single most important skill or requirement named in the listing text that is missing from the candidate\'s skills, copied from the listing, or "" if there is none. ' +
+                'Respond with ONLY a JSON object mapping job id to an object, no preamble, no markdown fences: {"id1": {"note": "...", "fit": 4, "gap": "..."}}',
             },
           ],
         },
@@ -853,14 +1022,30 @@ async function addBlurbs(jobs, skills, apiKey) {
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   const clean = text.replace(/```json|```/g, "").trim();
 
-  let blurbMap = {};
+  let map = {};
   try {
-    blurbMap = JSON.parse(clean);
+    map = JSON.parse(clean);
   } catch {
-    // if parsing fails, just skip blurbs rather than break the email
+    // if parsing fails, just skip the notes rather than break the email
   }
 
-  return jobs.map((j) => ({ ...j, blurb: blurbMap[j.id] || null }));
+  const notes = jobs.map((j, index) => {
+    const entry = map[j.id];
+    // A plain string (the older reply format) still works as just the note.
+    if (typeof entry === "string") return { job: { ...j, blurb: entry || null }, index };
+    const o = entry && typeof entry === "object" ? entry : {};
+    const fit = Number.isInteger(Number(o.fit)) && Number(o.fit) >= 1 && Number(o.fit) <= 5 ? Number(o.fit) : null;
+    // A gap is only shown if it really appears in the listing text we sent, which stops invented requirements.
+    const gapText = typeof o.gap === "string" ? o.gap.trim().slice(0, 60) : "";
+    const listing = `${sent[index].title} ${sent[index].description || ""}`.toLowerCase();
+    const gap = gapText && listing.includes(gapText.toLowerCase()) ? gapText : "";
+    return { job: { ...j, blurb: typeof o.note === "string" && o.note ? o.note : null, fit, gap }, index };
+  });
+
+  // The score is advice: it only changes the order of jobs already chosen, and never removes one.
+  return notes
+    .sort((a, b) => (b.job.fit ?? 0) - (a.job.fit ?? 0) || a.index - b.index)
+    .map((n) => n.job);
 }
 
 
@@ -1148,6 +1333,15 @@ function matchesCountry(job, country) {
   return words.some((w) => new RegExp(`(^|[^a-z])${escapeRegex(w)}([^a-z]|$)`).test(loc));
 }
 
+// Why saved jobs are switched off, or "" when they are on. A secret that exists but is blank counts as missing.
+function savedJobsOffReason(env) {
+  if (!env.DB) return "the D1 database is not connected (Settings > Bindings: add a D1 binding with the variable name DB, on Production)";
+  if (typeof env.HASH_SECRET !== "string" || env.HASH_SECRET.trim() === "") {
+    return "HASH_SECRET is missing or empty (Settings > Variables and secrets: add a Secret named HASH_SECRET with a long random value, then Deploy)";
+  }
+  return "";
+}
+
 // The same job is recognised by its link, or by title and company when it has none.
 function jobKey(job) {
   return (job.url || `${job.title}|${job.company}`).toLowerCase();
@@ -1423,6 +1617,14 @@ function safeUrl(u) {
   return /^https?:\/\//i.test(u || "") ? u : "#";
 }
 
+// "Fit 4/5" and, when known, what the listing asks for that the candidate's skills don't mention.
+function fitLineHtml(job) {
+  if (!job.fit) return "";
+  const colours = job.fit >= 4 ? ["#ecfdf5", "#065f46"] : job.fit === 3 ? ["#fffbeb", "#92400e"] : ["#f3f4f6", "#4b5563"];
+  const gap = job.gap ? ` <span style="color:#92400e;font-size:13px;">Gap: ${escapeHtml(job.gap)}</span>` : "";
+  return `<p style="margin:0 0 8px;"><span style="display:inline-block;padding:2px 9px;border-radius:10px;background:${colours[0]};color:${colours[1]};font-size:13px;font-weight:600;">Fit ${job.fit}/5</span>${gap}</p>`;
+}
+
 function adzunaLabelHtml() {
   return `<p style="margin:10px 0 0;font-size:12px;color:#666;"><a href="https://www.adzuna.in" style="color:#666;text-decoration:none;">Jobs</a> by <a href="https://www.adzuna.in"><img src="${ADZUNA_LOGO_URL}" alt="Adzuna" height="23" style="vertical-align:middle;border:0;"></a></p>`;
 }
@@ -1509,6 +1711,7 @@ function buildEmailHtml(jobs, resumeSummary, searchLabel, searchLinks = [], extr
       <div style="border:1px solid #e2e2e2;border-radius:8px;padding:16px;margin-bottom:12px;">
         <h3 style="margin:0 0 4px;"><a href="${escapeHtml(safeUrl(j.url))}" style="color:#2563eb;text-decoration:none;">${escapeHtml(j.title)}</a></h3>
         <p style="margin:0 0 8px;color:#666;">${meta}</p>
+        ${fitLineHtml(j)}
         ${j.blurb ? `<p style="margin:0;color:#333;">${escapeHtml(j.blurb)}</p>` : ""}
         ${j.source === "Adzuna" ? adzunaLabelHtml() : ""}
       </div>`;
@@ -1532,6 +1735,7 @@ function buildEmailHtml(jobs, resumeSummary, searchLabel, searchLinks = [], extr
     ${jobCards}
     ${buildSearchLinksHtml(searchLinks)}
     ${buildHistoryHtml(extras)}
+    ${jobs.some((j) => j.fit) ? '<p style="color:#666;font-size:12px;margin-top:20px;">Fit scores are an AI estimate from your skills and the listing text, not a promise. Please check each listing yourself.</p>' : ""}
     <p style="color:#b45309;font-size:12px;margin-top:20px;">Stay safe: a real employer never charges you to apply or asks for bank details, OTPs or money to start work. Job Radar removes listings with obvious scam signs but cannot catch every one.</p>
     <p style="color:#999;font-size:12px;margin-top:12px;">Listings from: ${credits}. Sent automatically by Job Radar.</p>
   </div>`;
